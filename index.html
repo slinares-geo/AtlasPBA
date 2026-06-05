@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atlas Electoral PBA</title>
+    <link rel="preconnect" href="https://unpkg.com" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="css/styles.css?v=05-csv-11" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="map-column">
+        <section class="map-pane">
+          <div class="map-stage">
+            <div id="map" aria-label="Mapa electoral de la provincia de Buenos Aires"></div>
+            <div class="map-vignette"></div>
+          </div>
+
+          <div class="map-actions" aria-label="Acciones del mapa">
+            <button id="resetMap" type="button" title="Volver a la vista inicial">Vista inicial</button>
+          </div>
+
+          <div class="map-tools" aria-label="Herramientas del mapa">
+            <div class="map-search">
+              <input id="mapSearchInput" type="search" placeholder="Buscar partido" autocomplete="off" aria-label="Buscar partido">
+              <div class="map-search-results is-hidden" id="mapSearchResults"></div>
+            </div>
+            <div class="map-level-switch" aria-label="Nivel geografico">
+              <button id="mapLevelParty" class="is-active" type="button">Partido</button>
+              <button id="mapLevelCircuit" type="button">Circuito</button>
+            </div>
+          </div>
+
+        <section class="question-window is-hidden is-collapsed" id="questionWindow" aria-label="Asistente de analisis electoral">
+          <div class="question-head">
+            <button class="question-title" id="questionToggle" type="button" aria-expanded="false">
+              <span>Asistente electoral</span>
+              <strong id="activeQuestionLabel">Elegir pregunta analitica</strong>
+            </button>
+            <button class="question-minimize" id="questionMinimize" type="button" title="Minimizar">-</button>
+            <button class="question-close" id="questionClose" type="button" title="Cerrar">x</button>
+          </div>
+          <div class="question-body" id="questionBody">
+            <div class="assistant-response" id="assistantResponse"></div>
+            <div class="question-list" id="questionList"></div>
+          </div>
+          </section>
+
+          <div class="legend" id="legend"></div>
+
+          <section class="circuit-drawer is-hidden" id="circuitDrawer" aria-label="Mapa interno de circuitos">
+          <div class="drawer-head">
+            <div>
+              <span>Detalle municipal</span>
+              <strong id="drawerTitle">Selecciona un partido</strong>
+            </div>
+            <div class="drawer-actions">
+              <button id="pinParty" type="button">Fijar</button>
+              <button id="closeDrawer" type="button">Cerrar</button>
+            </div>
+          </div>
+          <div id="circuitMap" aria-label="Circuitos electorales del partido seleccionado"></div>
+          </section>
+        </section>
+
+        <section class="map-summary" aria-label="Resumen territorial">
+          <section class="kpi-strip" id="kpiStrip" aria-label="Indicadores sinteticos"></section>
+          <section class="total-vote-card" aria-label="Composicion del voto total">
+            <div class="section-title">Composicion del voto total</div>
+            <div class="total-vote-stack" id="totalVoteStack"></div>
+            <div class="total-vote-legend" id="totalVoteLegend"></div>
+          </section>
+          <section class="vote-stack-card" aria-label="Distribucion de voto">
+            <div class="section-title">Distribucion de votos positivos</div>
+            <div class="vote-stack" id="voteStack"></div>
+            <div class="vote-stack-legend" id="voteStackLegend"></div>
+          </section>
+        </section>
+      </main>
+
+      <section class="workspace-panel" aria-label="Controles y detalle territorial">
+        <header class="topbar" aria-label="Controles principales">
+          <div class="brand">
+            <span class="brand-mark"></span>
+            <div class="brand-copy">
+              <div class="brand-title-row">
+                <strong>Atlas Electoral PBA</strong>
+                <button id="openMethodology" class="info-button" type="button" aria-label="Abrir documentación metodológica" title="Documentación metodológica">i</button>
+              </div>
+              <span>Análisis territorial del voto</span>
+            </div>
+          </div>
+
+          <div class="control-strip" aria-label="Filtros">
+            <div class="filter-group">
+              <span>Vista</span>
+              <div class="segmented" role="group" aria-label="Modo de vista">
+                <button class="is-active" id="modeElection" type="button" data-mode="target">Por eleccion</button>
+                <button id="modeCompare" type="button" data-mode="comparison">Comparar</button>
+              </div>
+            </div>
+
+            <label class="filter-election-single">
+              Eleccion
+              <select id="targetElection"></select>
+            </label>
+            <label class="filter-election-compare">
+              Eleccion base
+              <select id="baseElection"></select>
+            </label>
+            <label class="filter-election-compare">
+              Comparar
+              <select id="compareElection"></select>
+            </label>
+
+            <label>
+              Qué mostrar en el mapa
+              <select id="indicator"></select>
+            </label>
+            <label class="vote-type-filter">
+              Tipo de voto emitido
+              <select id="voteType">
+                <option value="positivo">Positivo</option>
+                <option value="blanco">Blanco</option>
+                <option value="nulo">Nulo</option>
+                <option value="impugnado">Impugnado</option>
+                <option value="recurrido">Recurrido</option>
+              </select>
+            </label>
+            <label class="force-filter">
+              Fuerza política
+              <select id="force">
+                <option value="LLA">La Libertad Avanza</option>
+                <option value="PERONISMO_K">Peronismo/K</option>
+              </select>
+            </label>
+            <label class="positive-measure-filter">
+              Cómo medir la fuerza
+              <select id="positiveMeasure">
+                <option value="share_positive">Porcentaje sobre votos positivos</option>
+                <option value="share_total">Porcentaje sobre total emitido</option>
+                <option value="gap_winner">Distancia a la primera fuerza</option>
+              </select>
+            </label>
+            <p class="metric-definition" id="metricDefinition"></p>
+
+            <div class="panel-actions" aria-label="Accesos">
+              <button id="openQuestions" type="button">Asistente</button>
+              <button id="openScatter" type="button">Cruzar metricas</button>
+            </div>
+
+            <div class="panel-actions export-actions" aria-label="Exportacion">
+              <button id="exportData" type="button">Exportar CSV</button>
+              <button id="exportReport" type="button">Modo informe</button>
+            </div>
+          </div>
+        </header>
+
+        <aside class="side-panel" aria-label="Detalle territorial">
+          <div class="panel-kicker" id="panelKicker">Provincia de Buenos Aires</div>
+          <h1 id="panelTitle">Selecciona un circuito</h1>
+          <p id="panelLead">Explora variaciones de voto, participacion y ausentismo entre 2023 y 2025.</p>
+
+          <div class="metrics-grid" id="metricsGrid"></div>
+
+          <div class="micro-section">
+            <div class="section-title">Competitividad</div>
+            <p class="section-note">Diferencia entre la primera y la segunda fuerza sobre votos positivos. Cuanto menor es el margen, mas competitivo es el circuito.</p>
+            <div class="bar-compare">
+              <span>2023</span>
+              <div><i id="margin2023"></i></div>
+              <b id="margin2023Label">s/d</b>
+            </div>
+            <div class="bar-compare">
+              <span>2025</span>
+              <div><i id="margin2025"></i></div>
+              <b id="margin2025Label">s/d</b>
+            </div>
+          </div>
+
+          <div class="micro-section">
+            <div class="section-title">Lectura rapida</div>
+            <p class="reading" id="quickReading">Usa el mapa, el ranking o una pregunta para iniciar una lectura territorial.</p>
+          </div>
+        </aside>
+
+        <section class="ranking-panel" aria-label="Ranking de circuitos">
+          <div class="ranking-head">
+            <div>
+              <span>Ranking</span>
+              <strong id="rankingTitle">Mayores cambios</strong>
+            </div>
+            <span class="ranking-context" id="rankingContext"></span>
+          </div>
+          <div class="ranking-list" id="rankingList"></div>
+        </section>
+      </section>
+
+      <section class="scatter-panel is-hidden" id="scatterPanel" aria-label="Cruza metricas">
+        <div class="scatter-head">
+          <div>
+            <span>Analisis exploratorio</span>
+            <strong>Cruzar metricas</strong>
+          </div>
+          <button id="closeScatter" type="button">Cerrar</button>
+        </div>
+        <div class="scatter-controls">
+          <label>
+            Unidad
+            <select id="scatterUnit">
+              <option value="party">Partido</option>
+              <option value="circuit">Circuito</option>
+            </select>
+          </label>
+          <label>
+            Eje X
+            <select id="scatterX"></select>
+          </label>
+          <label>
+            Eje Y
+            <select id="scatterY"></select>
+          </label>
+          <label>
+            Seleccion
+            <select id="scatterMode">
+              <option value="highlight">Resaltar</option>
+              <option value="filter">Filtrar mapa</option>
+            </select>
+          </label>
+        </div>
+        <div class="scatter-chart-wrap">
+          <svg id="scatterChart" role="img" aria-label="Grafico de dispersion"></svg>
+        </div>
+        <div class="scatter-stats" id="scatterStats"></div>
+        <div class="scatter-actions">
+          <button id="clearScatterSelection" type="button">Limpiar seleccion</button>
+          <span>Asociacion exploratoria. No implica causalidad.</span>
+        </div>
+      </section>
+
+      <div class="loading" id="loading">Preparando visor territorial...</div>
+      <div class="report-root" id="reportRoot" aria-hidden="true"></div>
+
+      <section class="methodology-modal" id="methodologyModal" role="dialog" aria-modal="true" aria-labelledby="methodologyTitle" hidden>
+        <div class="methodology-backdrop" data-methodology-close></div>
+        <article class="methodology-panel" id="methodologyPanel" tabindex="-1">
+          <header class="methodology-head">
+            <div>
+              <span>+ información</span>
+              <h2 id="methodologyTitle">Documentación metodológica</h2>
+            </div>
+            <button class="methodology-close" id="closeMethodology" type="button" aria-label="Cerrar documentación">x</button>
+          </header>
+          <div class="methodology-content">
+            <p><strong>Objetivo.</strong> Atlas Electoral PBA permite explorar territorialmente resultados electorales de la Provincia de Buenos Aires. Su objetivo es facilitar lecturas comparativas entre elecciones, detectar patrones de participación, ausentismo, composición del voto y desempeño relativo de fuerzas políticas en distintas escalas territoriales.</p>
+
+            <h3>Alcance territorial y unidades de análisis</h3>
+            <p>El alcance territorial es la Provincia de Buenos Aires. La aplicación integra información electoral y cartográfica para representar resultados en el territorio provincial.</p>
+            <ul>
+              <li><strong>Partido:</strong> lectura agregada a nivel municipal para comparar desempeños generales y peso electoral.</li>
+              <li><strong>Circuito electoral:</strong> lectura más detallada para identificar heterogeneidad interna dentro de los partidos.</li>
+            </ul>
+
+            <h3>Fuentes de datos</h3>
+            <ul>
+              <li>DINE / resultados electorales: <a href="https://www.argentina.gob.ar/dine/resultados-electorales" target="_blank" rel="noreferrer">argentina.gob.ar/dine/resultados-electorales</a></li>
+              <li>Cartografía de partidos de Provincia de Buenos Aires desde datos abiertos: <a href="https://catalogo.datos.gba.gob.ar/sv/dataset/partidos" target="_blank" rel="noreferrer">catalogo.datos.gba.gob.ar/sv/dataset/partidos</a></li>
+            </ul>
+            <p>La aplicación integra datos electorales y cartográficos. Los resultados electorales se procesan para construir indicadores por unidad territorial y las capas cartográficas permiten representarlos espacialmente.</p>
+
+            <h3>Métricas principales</h3>
+            <ul>
+              <li><strong>Electores:</strong> personas habilitadas para votar.</li>
+              <li><strong>Votantes:</strong> electores que emitieron voto.</li>
+              <li><strong>Participación:</strong> votantes sobre electores habilitados.</li>
+              <li><strong>Ausentismo:</strong> electores habilitados que no emitieron voto.</li>
+              <li><strong>Voto positivo, blanco, nulo, recurrido e impugnado:</strong> composición del voto emitido según categorías electorales.</li>
+              <li><strong>Distribución de votos positivos por fuerza:</strong> porcentaje de cada fuerza sobre votos positivos o sobre total emitido, según el indicador seleccionado.</li>
+              <li><strong>Competitividad:</strong> diferencia entre la primera y la segunda fuerza sobre votos positivos.</li>
+              <li><strong>Variaciones entre elecciones:</strong> cambios entre una elección base y una elección comparada, expresados principalmente en puntos porcentuales.</li>
+            </ul>
+
+            <h3>Distancia a la primera fuerza</h3>
+            <p>La métrica mide la distancia entre la fuerza seleccionada y la primera fuerza en cada territorio. Si la fuerza seleccionada ya es primera fuerza, el territorio se excluye de esta lectura y queda como sin dato o neutro en el mapa.</p>
+
+            <h3>Comparación temporal y ranking</h3>
+            <p>La comparación temporal toma una elección base y una elección objetivo. Para cada métrica comparable, calcula la diferencia entre ambos momentos en la misma unidad territorial. El ranking ordena territorios según la métrica activa y el modo de análisis: mayor a menor, menor a mayor o intensidad absoluta del cambio.</p>
+
+            <h3>Cómo leer el atlas</h3>
+            <ol>
+              <li>Seleccionar si se desea analizar una elección o comparar dos elecciones.</li>
+              <li>Elegir el indicador a mostrar en el mapa.</li>
+              <li>Ajustar fuerza política, tipo de voto o medida cuando corresponda.</li>
+              <li>Alternar entre Partido y Circuito según el nivel de detalle requerido.</li>
+              <li>Usar mapa, ranking, KPIs y asistente para construir una lectura territorial.</li>
+              <li>Interpretar los resultados como indicios exploratorios y contrastarlos con fuentes y conocimiento territorial.</li>
+            </ol>
+
+            <h3>Limitaciones</h3>
+            <ul>
+              <li>Dependencia de disponibilidad, consistencia y actualización de las fuentes.</li>
+              <li>Posibles diferencias entre unidades cartográficas y electorales.</li>
+              <li>Necesidad de validación de correspondencias a nivel de circuito.</li>
+              <li>Interpretación exploratoria de indicadores, sin inferencia causal automática.</li>
+            </ul>
+
+            <p class="methodology-doc-link"><a href="docs/documentacion-metodologica.md" target="_blank" rel="noreferrer">Ver documento metodológico completo</a></p>
+          </div>
+        </article>
+      </section>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/app.js?v=05-csv-22" type="module"></script>
+  </body>
+</html>
