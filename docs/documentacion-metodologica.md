@@ -1,20 +1,20 @@
-# Documentacion metodologica
+# Documentación metodológica
 
-## Objetivo de la aplicacion
+## Objetivo de la aplicación
 
-Atlas Electoral PBA permite explorar territorialmente resultados electorales de la Provincia de Buenos Aires. Su objetivo es facilitar lecturas comparativas entre elecciones, detectar patrones de participacion, ausentismo, composicion del voto y desempeno relativo de fuerzas politicas en distintas escalas territoriales.
+Atlas Electoral PBA permite explorar territorialmente resultados electorales de la Provincia de Buenos Aires. Su objetivo es facilitar lecturas comparativas entre elecciones, detectar patrones de participación, ausentismo, composición del voto y desempeño relativo de fuerzas políticas en distintas escalas territoriales.
 
-La herramienta esta orientada a la exploracion analitica. No reemplaza la validacion estadistica ni la revision documental de las fuentes originales.
+La herramienta esta orientada a la exploracion analítica. No reemplaza la validación estadistica ni la revisión documental de las fuentes originales.
 
 ## Alcance territorial
 
-El alcance territorial es la Provincia de Buenos Aires. La aplicacion integra informacion electoral y cartografica para representar resultados en el territorio provincial.
+El alcance territorial es la Provincia de Buenos Aires. La aplicación integra información electoral y cartográfica para representar resultados en el territorio provincial.
 
 ## Unidades de analisis
 
 ### Partido
 
-La vista Partido agrega o representa informacion a nivel municipal. Permite leer patrones generales, comparar desempenos entre partidos y ubicar territorios de mayor peso electoral.
+La vista Partido agrega o representa información a nivel municipal. Permite leer patrones generales, comparar desempeños entre partidos y ubicar territorios de mayor peso electoral.
 
 ### Circuito electoral
 
@@ -23,9 +23,11 @@ La vista Circuito trabaja con una unidad territorial electoral mas detallada. Pe
 ## Fuentes de datos
 
 1. DINE / resultados electorales: <https://www.argentina.gob.ar/dine/resultados-electorales>
-2. Cartografia de partidos de Provincia de Buenos Aires desde datos abiertos: <https://catalogo.datos.gba.gob.ar/sv/dataset/partidos>
+2. Cartografía de partidos de Provincia de Buenos Aires desde datos abiertos: <https://portalgeoestadistico.indec.gob.ar/>
+3. Cartografía digital de Circuitos Electorales de Buenos Aires | Cámara Nacional Electoral:
+<https://mapa2.electoral.gov.ar/descargas/>
 
-La aplicacion integra datos electorales y cartograficos. Los resultados electorales se procesan para construir indicadores por unidad territorial y las capas cartograficas permiten representarlos espacialmente.
+La aplicación integra datos electorales y cartográficos. Los resultados electorales se procesan para construir indicadores por unidad territorial y las capas cartográficas permiten representarlos espacialmente.
 
 ## Metricas principales
 
@@ -39,11 +41,11 @@ Cantidad de electores que emitieron voto.
 
 ### Participacion
 
-Proporcion de votantes sobre electores habilitados.
+Proporción de votantes sobre electores habilitados.
 
 ### Ausentismo
 
-Proporcion de electores habilitados que no emitieron voto. Se interpreta como complemento de la participacion.
+Proporción de electores habilitados que no emitieron voto. Se interpreta como complemento de la participación.
 
 ### Voto positivo
 
@@ -59,15 +61,15 @@ Votos invalidados de acuerdo con los criterios electorales aplicables.
 
 ### Voto recurrido
 
-Votos cuya validez fue objetada y queda sujeta a revision segun el procedimiento electoral.
+Votos cuya validez fue objetada y queda sujeta a revisión segun el procedimiento electoral.
 
 ### Voto impugnado
 
-Votos asociados a una impugnacion de identidad u otra situacion prevista por la normativa electoral.
+Votos asociados a una impugnación de identidad u otra situacion prevista por la normativa electoral.
 
-### Distribucion de votos positivos por fuerza
+### Distribución de votos positivos por fuerza
 
-Composicion de los votos afirmativos segun fuerza politica. La aplicacion permite observar el porcentaje de cada fuerza sobre votos positivos y, cuando corresponde, sobre el total emitido.
+Composicion de los votos afirmativos segun fuerza politica. La aplicación permite observar el porcentaje de cada fuerza sobre votos positivos y, cuando corresponde, sobre el total emitido.
 
 ### Competitividad
 
@@ -88,15 +90,15 @@ La comparacion temporal toma una eleccion base y una eleccion objetivo. Para cad
 La lectura debe considerar que:
 
 - los cargos, alianzas o denominaciones de fuerzas pueden variar entre elecciones;
-- los cambios territoriales se interpretan mejor junto con volumen de electores y participacion;
-- una variacion porcentual pequena puede ser relevante en territorios de gran peso electoral;
-- una variacion grande en territorios pequenos requiere cautela analitica.
+- los cambios territoriales se interpretan mejor junto con volumen de electores y participación;
+- una variación porcentual pequeña puede ser relevante en territorios de gran peso electoral;
+- una variación grande en territorios pequeños requiere cautela analítica.
 
 ## Criterio de ranking
 
 El ranking ordena territorios segun la metrica activa y el modo de analisis. Puede ordenar de mayor a menor, de menor a mayor o por intensidad absoluta del cambio, segun la pregunta o indicador seleccionado.
 
-El ranking es una herramienta de priorizacion exploratoria. No implica causalidad ni jerarquia politica por fuera de la metrica elegida.
+El ranking es una herramienta de priorizacion exploratoria. No implica causalidad ni jerarquía politica por fuera de la métrica elegida.
 
 ## Vista Partido/Circuito
 
@@ -104,8 +106,8 @@ La vista Partido permite una lectura agregada y comparable entre municipios. La 
 
 ## Como leer el atlas
 
-1. Seleccionar si se desea analizar una eleccion o comparar dos elecciones.
-2. Elegir la eleccion objetivo y, si corresponde, la eleccion base.
+1. Seleccionar si se desea analizar una elección o comparar dos elecciones.
+2. Elegir la elección objetivo y, si corresponde, la eleccion base.
 3. Definir que indicador mostrar en el mapa.
 4. Si se analiza voto por fuerza o tipo de voto, ajustar los controles dependientes.
 5. Alternar entre Partido y Circuito segun el nivel de detalle requerido.
@@ -116,16 +118,16 @@ La vista Partido permite una lectura agregada y comparable entre municipios. La 
 
 ## Limitaciones
 
-- La aplicacion depende de la disponibilidad, consistencia y actualizacion de las fuentes utilizadas.
-- Pueden existir diferencias entre unidades cartograficas y unidades electorales.
+- La aplicación depende de la disponibilidad, consistencia y actualización de las fuentes utilizadas.
+- Pueden existir diferencias entre unidades cartográficas y unidades electorales.
 - La lectura a nivel de circuito requiere validacion de correspondencias entre datos electorales y geometria.
 - Los indicadores tienen un uso exploratorio y no explican por si mismos las causas de los cambios observados.
 - Las comparaciones entre elecciones deben considerar cambios de oferta electoral, alianzas, cargos y contexto politico.
 
-## Recomendaciones de interpretacion
+## Recomendaciones de interpretación
 
 - Combinar porcentajes con volumen de electores.
-- Revisar participacion y ausentismo antes de interpretar cambios de voto.
+- Revisar participación y ausentismo antes de interpretar cambios de voto.
 - Comparar patrones entre Partido y Circuito para distinguir tendencias agregadas de heterogeneidad interna.
 - Usar la distancia a primera fuerza solo en territorios donde la fuerza seleccionada no lidera.
 - Tratar los territorios sin dato como casos a revisar, no como evidencia sustantiva.

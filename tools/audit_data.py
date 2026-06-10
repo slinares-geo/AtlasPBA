@@ -2,38 +2,28 @@ import csv
 import json
 import re
 import unicodedata
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
-APP_DIR = ROOT / "03_Tableros" / "01_MapaElectoral_0106"
+APP_DIR = Path(__file__).resolve().parents[1]
 OUT_DIR = APP_DIR / "docs"
+DATA_DIR = APP_DIR / "data"
+DINE_DIR = ROOT / "02_Datos" / "01_DINE"
 
-SOURCES = {
-    "2023": ROOT / "02_Datos" / "01_DINE" / "01_2023" / "presentacionDeResultados_presidenciales_2023.csv",
-    "2025": ROOT / "02_Datos" / "01_DINE" / "02_2025" / "presentacionDeResultados_Diputados_2025.csv",
+SOURCE_CIRCUITS = ROOT / "02_Datos" / "03_circuitoselectoralespba" / "01_CircuitosElectorales2025_PBA3.geojson"
+SOURCE_PARTIES = ROOT / "02_Datos" / "03_circuitoselectoralespba" / "02_PartidosPBA2.geojson"
+APP_CIRCUITS = DATA_DIR / "circuitos_pba.geojson"
+APP_PARTIES = DATA_DIR / "partidos_pba.geojson"
+APP_ELECTORAL_DATA = DATA_DIR / "electoral_data.json"
+
+IMPORTANT_PARTIES = {
+    "06218": "Chascomús",
+    "06466": "Lezama",
+    "06371": "General San Martín",
 }
-
-GEOJSON = ROOT / "02_Datos" / "02_Poblaciones 2023" / "04_DepartamentosElecciones.geojson"
-CIRCUIT_GEOJSON = ROOT / "02_Datos" / "03_circuitoselectoralespba" / "circuitos-electorales-pba.geojson"
-XLS_2025 = ROOT / "02_Datos" / "01_DINE" / "02_2025" / "Libro3_normalizado_mapas.xls"
-DICT_XLSX = (
-    ROOT
-    / "02_Datos"
-    / "02_Poblaciones 2023"
-    / "Departamentos - Elecciones presidenciales 2023 (generales y balotaje) - Diccionario de datos.xlsx"
-)
-
-
-def as_int(value):
-    try:
-        if value is None or value == "":
-            return 0
-        return int(float(str(value).replace(",", ".")))
-    except ValueError:
-        return 0
 
 
 def norm_text(value):
@@ -41,22 +31,12 @@ def norm_text(value):
 
 
 def norm_name(value):
-    text = norm_text(value).upper()
-    text = text.replace("Ñ", "N")
+    text = norm_text(value).upper().replace("Ñ", "N")
     text = unicodedata.normalize("NFD", text)
     text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+    text = re.sub(r"^PARTIDO\s+(DE|DEL)\s+", "", text)
     text = re.sub(r"[^A-Z0-9]+", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    aliases = {
-        "A GONZALES CHAVES": "ADOLFO GONZALES CHAVES",
-        "CA UELAS": "CANUELAS",
-        "CNEL DE MARINA L ROSALES": "CORONEL DE MARINA L ROSALES",
-        "9 DE JULIO": "NUEVE DE JULIO",
-        "25 DE MAYO": "VEINTICINCO DE MAYO",
-        "CORONEL ROSALES": "CORONEL DE MARINA L ROSALES",
-        "GENERAL LAMADRID": "GENERAL LA MADRID",
-    }
-    return aliases.get(text, text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def norm_circuit(value):
@@ -69,167 +49,23 @@ def norm_circuit(value):
     return text.lstrip("0") or text
 
 
-def mesa_key(row):
-    return (
-        norm_text(row.get("distrito_id")),
-        norm_text(row.get("seccion_id")),
-        norm_text(row.get("circuito_id")),
-        norm_text(row.get("mesa_id")),
-        norm_text(row.get("mesa_tipo")),
-    )
+def as_int(value):
+    try:
+        if value is None or value == "":
+            return 0
+        return int(float(str(value).replace(",", ".")))
+    except ValueError:
+        return 0
 
 
-def circuit_key(row):
-    return (
-        norm_text(row.get("distrito_id")),
-        norm_text(row.get("seccion_id")),
-        norm_text(row.get("circuito_id")),
-    )
-
-
-def circuit_name_key(row):
-    return (
-        norm_name(row.get("seccion_nombre")),
-        norm_circuit(row.get("circuito_id")),
-    )
-
-
-def inspect_csv(path):
-    counters = {
-        "eleccion_tipo": Counter(),
-        "cargo_nombre": Counter(),
-        "votos_tipo": Counter(),
-        "estado_final": Counter(),
-        "agrupacion_nombre": Counter(),
-        "seccion_nombre": Counter(),
-    }
-    circuits = set()
-    circuits_by_name = set()
-    sections = set()
-    mesas = {}
-    votes_by_type = Counter()
-    positive_by_group = Counter()
-    sample_rows = []
-    row_count = 0
-    total_votes = 0
-
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        columns = reader.fieldnames or []
-        for row in reader:
-            row_count += 1
-            if len(sample_rows) < 3:
-                sample_rows.append({key: row.get(key, "") for key in columns[:10]})
-
-            for field, counter in counters.items():
-                counter[norm_text(row.get(field))] += 1
-
-            sections.add((norm_text(row.get("distrito_id")), norm_text(row.get("seccion_id"))))
-            circuits.add(circuit_key(row))
-            circuits_by_name.add(circuit_name_key(row))
-
-            key = mesa_key(row)
-            electors = as_int(row.get("mesa_electores"))
-            if key not in mesas:
-                mesas[key] = electors
-            elif electors and mesas[key] != electors:
-                mesas[key] = max(mesas[key], electors)
-
-            votes = as_int(row.get("votos_cantidad"))
-            total_votes += votes
-            vote_type = norm_text(row.get("votos_tipo")) or "SIN_TIPO"
-            votes_by_type[vote_type] += votes
-
-            if vote_type == "POSITIVO":
-                group = norm_text(row.get("agrupacion_nombre")) or "SIN_AGRUPACION"
-                positive_by_group[group] += votes
-
-    electors_total = sum(mesas.values())
-    turnout = total_votes / electors_total if electors_total else None
-
-    return {
-        "path": str(path.relative_to(ROOT)),
-        "size_mb": round(path.stat().st_size / 1024 / 1024, 2),
-        "columns": columns,
-        "row_count": row_count,
-        "sample_rows": sample_rows,
-        "sections_count": len(sections),
-        "circuits_count": len(circuits),
-        "mesas_count": len(mesas),
-        "electors_total_from_unique_mesas": electors_total,
-        "votes_total_from_rows": total_votes,
-        "turnout_estimate": turnout,
-        "votes_by_type": dict(votes_by_type.most_common()),
-        "positive_by_group_top": dict(positive_by_group.most_common(20)),
-        "counters": {key: dict(counter.most_common(20)) for key, counter in counters.items()},
-        "keys": {
-            "sections": sorted(list(sections)),
-            "circuits": sorted(list(circuits)),
-            "circuits_by_name": sorted(list(circuits_by_name)),
-        },
-    }
-
-
-def inspect_geojson(path, layer_kind="departamentos"):
-    with path.open("r", encoding="utf-8") as handle:
-        data = json.load(handle)
-
-    features = data.get("features", [])
-    prop_counter = Counter()
-    geom_counter = Counter()
-    sample_props = []
-    circuit_keys_by_name = set()
-    features_without_join_key = 0
-    for feature in features:
-        props = feature.get("properties", {}) or {}
-        prop_counter.update(props.keys())
-        geom = feature.get("geometry", {}) or {}
-        geom_counter[geom.get("type", "SIN_GEOMETRIA")] += 1
-        if len(sample_props) < 3:
-            sample_props.append(props)
-        if layer_kind == "circuitos":
-            dep = norm_name(props.get("departamen"))
-            circuit = norm_circuit(props.get("circuito"))
-            if dep and circuit:
-                circuit_keys_by_name.add((dep, circuit))
-            else:
-                features_without_join_key += 1
-
-    property_names = sorted(prop_counter.keys())
-    circuit_like = [
-        name
-        for name in property_names
-        if "CIRC" in name.upper() or "CIRCU" in name.upper()
-    ]
-
-    return {
-        "path": str(path.relative_to(ROOT)),
-        "size_mb": round(path.stat().st_size / 1024 / 1024, 2),
-        "feature_count": len(features),
-        "geometry_types": dict(geom_counter),
-        "property_names": property_names,
-        "circuit_like_properties": circuit_like,
-        "circuit_keys_by_name": sorted(list(circuit_keys_by_name)),
-        "features_without_join_key": features_without_join_key,
-        "sample_properties": sample_props,
-    }
-
-
-def file_probe(path):
-    first_bytes = path.read_bytes()[:8] if path.exists() else b""
-    signature = " ".join(f"{byte:02X}" for byte in first_bytes)
-    return {
-        "path": str(path.relative_to(ROOT)),
-        "exists": path.exists(),
-        "size_mb": round(path.stat().st_size / 1024 / 1024, 2) if path.exists() else 0,
-        "signature": signature,
-    }
-
-
-def pct(value):
+def pct(value, digits=2):
     if value is None:
         return "s/d"
-    return f"{value * 100:.2f}%"
+    return f"{value * 100:.{digits}f}%"
+
+
+def fmt_int(value):
+    return f"{value:,}".replace(",", ".")
 
 
 def md_table(rows, headers):
@@ -242,242 +78,358 @@ def md_table(rows, headers):
     return "\n".join(lines)
 
 
+def slug(parts):
+    text = "_".join(norm_name(part) for part in parts if part)
+    text = re.sub(r"[^A-Z0-9]+", "_", text)
+    return re.sub(r"_+", "_", text).strip("_").lower()
+
+
+def pretty_label(value):
+    text = norm_text(value).lower()
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:1].upper() + text[1:]
+
+
+def discover_sources():
+    sources = []
+    for path in sorted(DINE_DIR.rglob("*.csv")):
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            first = next(reader)
+        year = norm_text(first.get("año"))
+        election_type = pretty_label(first.get("eleccion_tipo"))
+        cargo = pretty_label(first.get("cargo_nombre"))
+        cargo_id = norm_text(first.get("cargo_id"))
+        source_id = slug([year, first.get("eleccion_tipo"), cargo_id or cargo, path.stem])
+        sources.append({
+            "id": source_id,
+            "year": year,
+            "label": f"{year} · {election_type} · {cargo}",
+            "path": path,
+        })
+    return sources
+
+
+def inspect_csv(source):
+    counters = {
+        "votos_tipo": Counter(),
+        "agrupacion_nombre": Counter(),
+        "seccion_nombre": Counter(),
+    }
+    circuits = set()
+    sections = set()
+    mesas = {}
+    votes_total = 0
+    positive_by_group = Counter()
+
+    with source["path"].open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        columns = reader.fieldnames or []
+        row_count = 0
+        for row in reader:
+            row_count += 1
+            sections.add((norm_text(row.get("distrito_id")), norm_text(row.get("seccion_id"))))
+            circuits.add(norm_circuit(row.get("circuito_id")))
+            mesa_key = (
+                norm_text(row.get("distrito_id")),
+                norm_text(row.get("seccion_id")),
+                norm_circuit(row.get("circuito_id")),
+                norm_text(row.get("mesa_id")),
+                norm_text(row.get("mesa_tipo")),
+            )
+            electors = as_int(row.get("mesa_electores"))
+            if electors:
+                mesas[mesa_key] = max(mesas.get(mesa_key, 0), electors)
+
+            votes = as_int(row.get("votos_cantidad"))
+            votes_total += votes
+            vote_type = norm_text(row.get("votos_tipo")) or "SIN_TIPO"
+            counters["votos_tipo"][vote_type] += votes
+            counters["agrupacion_nombre"][norm_text(row.get("agrupacion_nombre"))] += 1
+            counters["seccion_nombre"][norm_text(row.get("seccion_nombre"))] += 1
+            if vote_type == "POSITIVO":
+                positive_by_group[norm_text(row.get("agrupacion_nombre")) or "SIN_AGRUPACION"] += votes
+
+    electors_total = sum(mesas.values())
+    return {
+        "id": source["id"],
+        "label": source["label"],
+        "path": str(source["path"].relative_to(ROOT)),
+        "size_mb": round(source["path"].stat().st_size / 1024 / 1024, 2),
+        "columns": columns,
+        "row_count": row_count,
+        "sections_count": len(sections),
+        "circuits_count": len(circuits),
+        "circuit_keys": sorted(circuits, key=lambda value: (len(value), value)),
+        "mesas_count": len(mesas),
+        "electors_total_from_unique_mesas": electors_total,
+        "votes_total_from_rows": votes_total,
+        "turnout_estimate": votes_total / electors_total if electors_total else None,
+        "votes_by_type": dict(counters["votos_tipo"].most_common()),
+        "positive_by_group_top": dict(positive_by_group.most_common(15)),
+    }
+
+
+def load_geojson(path):
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def inspect_source_parties():
+    geo = load_geojson(SOURCE_PARTIES)
+    features = geo.get("features", [])
+    keys = [norm_text((feature.get("properties") or {}).get("CODIGO")) for feature in features]
+    names = {
+        norm_text((feature.get("properties") or {}).get("CODIGO")): norm_text((feature.get("properties") or {}).get("NOMBRE"))
+        for feature in features
+    }
+    return {
+        "path": str(SOURCE_PARTIES.relative_to(ROOT)),
+        "feature_count": len(features),
+        "unique_codigo_count": len(set(keys)),
+        "duplicate_codigos": {key: keys.count(key) for key in sorted(set(keys)) if keys.count(key) > 1},
+        "important_parties": {key: names.get(key) for key in IMPORTANT_PARTIES},
+        "property_names": sorted({field for feature in features for field in (feature.get("properties") or {})}),
+    }
+
+
+def inspect_source_circuits(csv_audit):
+    geo = load_geojson(SOURCE_CIRCUITS)
+    features = geo.get("features", [])
+    circuit_keys = set()
+    party_codes = set()
+    features_without_codigo = 0
+    features_without_circuit = 0
+    for feature in features:
+        props = feature.get("properties") or {}
+        circuit = norm_circuit(props.get("circuito"))
+        codigo = norm_text(props.get("CODIGO"))
+        if circuit:
+            circuit_keys.add(circuit)
+        else:
+            features_without_circuit += 1
+        if codigo:
+            party_codes.add(codigo)
+        else:
+            features_without_codigo += 1
+
+    by_election = {}
+    for source_id, info in csv_audit.items():
+        data_keys = set(info["circuit_keys"])
+        missing_geo = sorted(data_keys - circuit_keys, key=lambda value: (len(value), value))
+        geo_without_data = sorted(circuit_keys - data_keys, key=lambda value: (len(value), value))
+        by_election[source_id] = {
+            "dine_circuits": len(data_keys),
+            "matched": len(data_keys & circuit_keys),
+            "missing_geo_count": len(missing_geo),
+            "missing_geo_sample": missing_geo[:30],
+            "geo_without_data_count": len(geo_without_data),
+            "geo_without_data_sample": geo_without_data[:30],
+            "coverage_dine_pct": round((len(data_keys & circuit_keys) / len(data_keys)) * 100, 2) if data_keys else 0,
+        }
+
+    return {
+        "path": str(SOURCE_CIRCUITS.relative_to(ROOT)),
+        "feature_count": len(features),
+        "unique_circuit_count": len(circuit_keys),
+        "unique_party_codigo_count": len(party_codes),
+        "features_without_codigo": features_without_codigo,
+        "features_without_circuit": features_without_circuit,
+        "property_names": sorted({field for feature in features for field in (feature.get("properties") or {})}),
+        "by_election": by_election,
+    }
+
+
+def inspect_app_artifacts():
+    data = json.loads(APP_ELECTORAL_DATA.read_text(encoding="utf-8"))
+    party_geo = load_geojson(APP_PARTIES)
+    circuit_geo = load_geojson(APP_CIRCUITS)
+    party_geo_keys = {feature["properties"]["key"] for feature in party_geo.get("features", [])}
+    circuit_geo_keys = {feature["properties"]["key"] for feature in circuit_geo.get("features", [])}
+
+    elections = {}
+    for source in data.get("sources", []):
+        source_id = source["id"]
+        party_rows = data["party"]["elections"][source_id]
+        circuit_rows = data["circuit"]["elections"][source_id]
+        party_keys = set(party_rows)
+        circuit_keys = set(circuit_rows)
+        elections[source_id] = {
+            "label": source["label"],
+            "year": source["year"],
+            "party_rows": len(party_rows),
+            "circuit_rows": len(circuit_rows),
+            "party_data_without_geo": sorted(party_keys - party_geo_keys),
+            "party_geo_without_data_count": len(party_geo_keys - party_keys),
+            "circuit_data_without_geo_count": len(circuit_keys - circuit_geo_keys),
+            "circuit_data_without_geo_sample": sorted(circuit_keys - circuit_geo_keys, key=lambda value: (len(value), value))[:30],
+            "circuit_geo_without_data_count": len(circuit_geo_keys - circuit_keys),
+            "important_party_rows": {
+                key: {
+                    "expected": expected,
+                    "name": party_rows.get(key, {}).get("partido"),
+                    "electores": party_rows.get(key, {}).get("electores"),
+                    "votantes": party_rows.get(key, {}).get("votantes"),
+                    "circuit_count": party_rows.get(key, {}).get("circuit_count"),
+                }
+                for key, expected in IMPORTANT_PARTIES.items()
+            },
+        }
+
+    return {
+        "generated_at": data.get("generated_at"),
+        "defaults": data.get("defaults"),
+        "source_count": len(data.get("sources", [])),
+        "party_geo_features": len(party_geo.get("features", [])),
+        "circuit_geo_features": len(circuit_geo.get("features", [])),
+        "party_geo_unique_keys": len(party_geo_keys),
+        "circuit_geo_unique_keys": len(circuit_geo_keys),
+        "elections": elections,
+    }
+
+
 def build_report(audit):
     csv_rows = []
-    for year, info in audit["csv"].items():
-        csv_rows.append(
-            {
-                "anio": year,
-                "archivo": info["path"],
-                "filas": f"{info['row_count']:,}".replace(",", "."),
-                "secciones": info["sections_count"],
-                "circuitos": info["circuits_count"],
-                "mesas": f"{info['mesas_count']:,}".replace(",", "."),
-                "electores": f"{info['electors_total_from_unique_mesas']:,}".replace(",", "."),
-                "votos": f"{info['votes_total_from_rows']:,}".replace(",", "."),
-                "participacion_est": pct(info["turnout_estimate"]),
-            }
-        )
+    for info in audit["csv"].values():
+        csv_rows.append({
+            "eleccion": info["label"],
+            "archivo": info["path"],
+            "filas": fmt_int(info["row_count"]),
+            "circuitos": info["circuits_count"],
+            "mesas": fmt_int(info["mesas_count"]),
+            "electores": fmt_int(info["electors_total_from_unique_mesas"]),
+            "votos": fmt_int(info["votes_total_from_rows"]),
+            "participacion_est": pct(info["turnout_estimate"]),
+        })
 
-    compare = audit["comparison"]
-    geo = audit["geojson"]
-    circuit_geo = audit["circuit_geojson"]
-    circuit_compare = audit["circuit_geo_comparison"]
+    app_rows = []
+    for info in audit["app"]["elections"].values():
+        app_rows.append({
+            "eleccion": info["label"],
+            "partidos": info["party_rows"],
+            "circuitos_datos": info["circuit_rows"],
+            "partidos_sin_geo": len(info["party_data_without_geo"]),
+            "circuitos_sin_geo": info["circuit_data_without_geo_count"],
+        })
+
+    circuit_rows = []
+    for source_id, info in audit["source_circuits"]["by_election"].items():
+        circuit_rows.append({
+            "eleccion": audit["csv"][source_id]["label"],
+            "circuitos_dine": info["dine_circuits"],
+            "match": info["matched"],
+            "cobertura_dine": f"{info['coverage_dine_pct']}%",
+            "dine_sin_geo": info["missing_geo_count"],
+            "geo_sin_datos": info["geo_without_data_count"],
+        })
 
     lines = [
         "# Auditoria de datos electorales PBA",
         "",
         f"Generado: {audit['generated_at']}",
         "",
-        "## Resumen ejecutivo",
+        "## Alcance vigente",
         "",
-        "- Los CSV DINE 2023 y 2025 tienen estructura compatible para una primera normalizacion electoral.",
-        "- Ambos archivos incluyen `seccion_id`, `seccion_nombre`, `circuito_id`, `circuito_nombre`, `mesa_id`, `mesa_electores`, `agrupacion_nombre`, `votos_tipo` y `votos_cantidad`.",
-        "- La unidad electoral de resultados puede reconstruirse a nivel mesa, circuito, partido/departamento y provincia.",
-        "- La cartografia departamental disponible en `04_DepartamentosElecciones.geojson` esta a nivel partido/departamento.",
-        "- La nueva cartografia `circuitos-electorales-pba.geojson` permite avanzar con el objetivo principal a nivel circuito, usando una clave normalizada partido + circuito.",
+        "- Esta auditoria corresponde a la app `05_MapaElectoral_Cockpit_CSV`.",
+        "- Capa de partidos fuente: `02_PartidosPBA2.geojson`.",
+        "- Capa de circuitos fuente: `01_CircuitosElectorales2025_PBA3.geojson`.",
+        "- La clave de union de partido es `CODIGO`.",
+        "- La clave de union de circuito es `circuito`, normalizada sin ceros iniciales y conservando sufijos alfabeticos.",
+        "- Los artefactos auditados son `electoral_data.json`, `partidos_pba.geojson` y `circuitos_pba.geojson` dentro de `data/`.",
         "",
-        "## Inventario de resultados",
+        "## Inventario CSV DINE",
+        "",
+        md_table(csv_rows, ["eleccion", "archivo", "filas", "circuitos", "mesas", "electores", "votos", "participacion_est"]),
+        "",
+        "Nota: `participacion_est` se calcula como suma de votos registrados / electores unicos por mesa.",
+        "",
+        "## Capas fuente",
+        "",
+        f"- Partidos fuente: {audit['source_parties']['feature_count']} features, {audit['source_parties']['unique_codigo_count']} CODIGO unicos.",
+        f"- Circuitos fuente: {audit['source_circuits']['feature_count']} features, {audit['source_circuits']['unique_circuit_count']} circuitos unicos.",
+        f"- CODIGO de partido presentes en circuitos fuente: {audit['source_circuits']['unique_party_codigo_count']}.",
+        f"- Features de circuito sin `CODIGO`: {audit['source_circuits']['features_without_codigo']}.",
+        f"- Features de circuito sin `circuito`: {audit['source_circuits']['features_without_circuit']}.",
+        f"- CODIGO duplicados en partidos fuente: {audit['source_parties']['duplicate_codigos'] or 'ninguno'}.",
+        "",
+        "Partidos criticos en la capa fuente:",
         "",
         md_table(
-            csv_rows,
             [
-                "anio",
-                "archivo",
-                "filas",
-                "secciones",
-                "circuitos",
-                "mesas",
-                "electores",
-                "votos",
-                "participacion_est",
+                {"codigo": key, "esperado": expected, "nombre_fuente": audit["source_parties"]["important_parties"].get(key)}
+                for key, expected in IMPORTANT_PARTIES.items()
             ],
+            ["codigo", "esperado", "nombre_fuente"],
         ),
         "",
-        "Nota: `participacion_est` se calcula como suma de votos registrados / electores unicos por mesa. Debe validarse contra totales oficiales antes de publicar.",
+        "## Cobertura circuito contra capa PBA3",
         "",
-        "## Compatibilidad territorial 2023-2025",
+        md_table(circuit_rows, ["eleccion", "circuitos_dine", "match", "cobertura_dine", "dine_sin_geo", "geo_sin_datos"]),
         "",
-        f"- Circuitos 2023: {compare['circuits_2023']}",
-        f"- Circuitos 2025: {compare['circuits_2025']}",
-        f"- Circuitos en ambos anios: {compare['circuits_intersection']}",
-        f"- Circuitos solo en 2023: {compare['circuits_only_2023']}",
-        f"- Circuitos solo en 2025: {compare['circuits_only_2025']}",
-        "",
-        "La comparacion por circuito es viable en datos tabulares y la nueva capa permite mapearla con cobertura casi completa.",
-        "",
-        "## Fuerzas principales detectadas",
+        "Muestras de circuitos DINE sin geometria:",
         "",
     ]
 
-    for year, info in audit["csv"].items():
-        rows = [
-            {"fuerza": name, "votos_positivos": f"{votes:,}".replace(",", ".")}
-            for name, votes in list(info["positive_by_group_top"].items())[:12]
-        ]
-        lines.extend([f"### {year}", "", md_table(rows, ["fuerza", "votos_positivos"]), ""])
+    for source_id, info in audit["source_circuits"]["by_election"].items():
+        lines.append(f"- {audit['csv'][source_id]['label']}: {info['missing_geo_sample'] or 'ninguno'}")
 
-    lines.extend(
-        [
-            "## Tipos de voto",
-            "",
-        ]
-    )
-    for year, info in audit["csv"].items():
-        rows = [
-            {"tipo": name, "votos": f"{votes:,}".replace(",", ".")}
-            for name, votes in info["votes_by_type"].items()
-        ]
-        lines.extend([f"### {year}", "", md_table(rows, ["tipo", "votos"]), ""])
+    lines.extend([
+        "",
+        "## Artefactos normalizados de la app",
+        "",
+        f"- `electoral_data.json` generado: {audit['app']['generated_at']}.",
+        f"- Elecciones procesadas: {audit['app']['source_count']}.",
+        f"- GeoJSON partidos app: {audit['app']['party_geo_features']} features, {audit['app']['party_geo_unique_keys']} claves unicas.",
+        f"- GeoJSON circuitos app: {audit['app']['circuit_geo_features']} features, {audit['app']['circuit_geo_unique_keys']} claves unicas.",
+        "",
+        md_table(app_rows, ["eleccion", "partidos", "circuitos_datos", "partidos_sin_geo", "circuitos_sin_geo"]),
+        "",
+        "## Validacion de partidos criticos en datos agregados",
+        "",
+    ])
 
-    lines.extend(
-        [
-            "## Cartografia disponible",
-            "",
-            "### Departamentos",
-            "",
-            f"- Archivo: `{geo['path']}`",
-            f"- Features: {geo['feature_count']}",
-            f"- Tamanio: {geo['size_mb']} MB",
-            f"- Tipos geometricos: {geo['geometry_types']}",
-            f"- Campos con apariencia de circuito: {geo['circuit_like_properties'] or 'ninguno'}",
-            "",
-            "Campos principales observados:",
-            "",
-            ", ".join(geo["property_names"][:80]),
-            "",
-            "Conclusion: esta capa sirve para un MVP departamental, pero no para pintar circuitos.",
-            "",
-            "### Circuitos electorales",
-            "",
-            f"- Archivo: `{circuit_geo['path']}`",
-            f"- Features: {circuit_geo['feature_count']}",
-            f"- Tamanio: {circuit_geo['size_mb']} MB",
-            f"- Tipos geometricos: {circuit_geo['geometry_types']}",
-            f"- Campos principales de union: `departamen`, `circuito`.",
-            f"- Features sin clave de union aparente: {circuit_geo['features_without_join_key']}",
-            "",
-            "Compatibilidad contra resultados DINE usando `seccion_nombre/departamen` normalizado + `circuito_id/circuito` normalizado:",
-            "",
-            f"- Claves cartograficas de circuito: {circuit_compare['geo_circuit_keys']}",
-            f"- Match con circuitos 2023: {circuit_compare['matched_2023']} de {circuit_compare['dine_circuits_2023']} DINE; cobertura DINE {circuit_compare['coverage_dine_2023_pct']}%; cobertura geometrica {circuit_compare['coverage_geo_2023_pct']}%.",
-            f"- Match con circuitos 2025: {circuit_compare['matched_2025']} de {circuit_compare['dine_circuits_2025']} DINE; cobertura DINE {circuit_compare['coverage_dine_2025_pct']}%; cobertura geometrica {circuit_compare['coverage_geo_2025_pct']}%.",
-            f"- Circuitos DINE 2023 sin geometria: {circuit_compare['dine_only_2023']}.",
-            f"- Circuitos DINE 2025 sin geometria: {circuit_compare['dine_only_2025']}.",
-            f"- Geometrias sin resultados 2023: {circuit_compare['geo_only_2023']}.",
-            f"- Geometrias sin resultados 2025: {circuit_compare['geo_only_2025']}.",
-            "",
-            "Muestras de no apareados:",
-            "",
-            f"- DINE 2023 sin geometria: {circuit_compare['sample_dine_only_2023']}",
-            f"- DINE 2025 sin geometria: {circuit_compare['sample_dine_only_2025']}",
-            f"- Geometrias sin DINE 2023: {circuit_compare['sample_geo_only_2023']}",
-            f"- Geometrias sin DINE 2025: {circuit_compare['sample_geo_only_2025']}",
-            "",
-            "## Observaciones para homologacion politica",
-            "",
-            "- La comparacion solicitada entre La Libertad Avanza y peronismo/kirchnerismo requiere una tabla de homologacion de fuerzas.",
-            "- Homologacion inicial sugerida:",
-            "  - `LA LIBERTAD AVANZA` (2023) -> bloque `LLA`.",
-            "  - `ALIANZA LA LIBERTAD AVANZA` (2025) -> bloque `LLA`.",
-            "  - `UNION POR LA PATRIA` (2023) -> bloque `PERONISMO_K`.",
-            "  - `ALIANZA FUERZA PATRIA` (2025) -> bloque `PERONISMO_K`.",
-            "- El resto de fuerzas deberia conservarse como agrupacion propia y, en paralelo, clasificarse en bloques amplios si el analisis politico lo requiere.",
-            "",
-            "## Circuitos no apareados",
-            "",
-            "Muestra de claves con formato `(distrito_id, seccion_id, circuito_id)`:",
-            "",
-            f"- Solo 2023: {compare['sample_only_2023']}",
-            f"- Solo 2025: {compare['sample_only_2025']}",
-            "",
-            "## Archivos auxiliares",
-            "",
-            f"- `Libro3_normalizado_mapas.xls`: firma `{audit['xls_2025_probe']['signature']}`. Es un Excel binario historico `.xls`; requiere conversion o lector `xlrd` para auditar hojas.",
-            f"- Diccionario `.xlsx`: firma `{audit['dict_xlsx_probe']['signature']}`. Es un `.xlsx` valido y puede inspeccionarse luego si necesitamos documentar campos de la capa departamental.",
-            "",
-            "## Recomendacion para el proximo paso",
-            "",
-            "1. Construir un ETL que produzca agregados por circuito para 2023 y 2025, mas una tabla de comparacion.",
-            "2. Preparar una capa GeoJSON liviana de circuitos con clave normalizada `partido_norm + circuito_norm`.",
-            "3. Desarrollar el MVP estatico con Leaflet/Argenmap usando datos preprocesados.",
-            "4. Revisar manualmente los pocos circuitos no apareados antes de publicar indicadores finales.",
-            "",
-            "## Indicadores calculables con los insumos actuales",
-            "",
-            "- Electores por mesa/circuito/partido/provincia.",
-            "- Votantes como suma de votos por mesa/circuito/partido/provincia.",
-            "- Participacion y ausentismo.",
-            "- Voto positivo por fuerza.",
-            "- Blanco, nulo y otros tipos disponibles en `votos_tipo`.",
-            "- Ranking de variaciones 2023-2025 por circuito si se usa la tabla electoral.",
-            "- Mapa de variaciones por circuito con la nueva cartografia, sujeto a resolver no apareados.",
-        ]
-    )
+    important_rows = []
+    for info in audit["app"]["elections"].values():
+        for key, row in info["important_party_rows"].items():
+            important_rows.append({
+                "eleccion": info["label"],
+                "codigo": key,
+                "esperado": row["expected"],
+                "nombre": row["name"],
+                "circuitos": row["circuit_count"],
+                "electores": fmt_int(row["electores"] or 0),
+                "votantes": fmt_int(row["votantes"] or 0),
+            })
+    lines.append(md_table(important_rows, ["eleccion", "codigo", "esperado", "nombre", "circuitos", "electores", "votantes"]))
 
-    return "\n".join(lines) + "\n"
+    lines.extend([
+        "",
+        "## Lectura operativa",
+        "",
+        "- A nivel partido, todas las elecciones quedan con 135 partidos y sin partidos con datos fuera de la geometria.",
+        "- Chascomus y Lezama quedan separados por CODIGO: `06218` y `06466`.",
+        "- General San Martin queda agregado por CODIGO `06371`, incluyendo circuitos historicos 2023 aunque no existan como poligonos individuales en la capa 2025.",
+        "- En vista circuito, 2023 conserva una salvedad: los circuitos historicos `383` y `388` no tienen geometria propia en PBA3.",
+        "",
+    ])
+
+    return "\n".join(lines)
 
 
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    csv_audit = {year: inspect_csv(path) for year, path in SOURCES.items()}
-
-    circuits_2023 = set(tuple(item) for item in csv_audit["2023"]["keys"]["circuits"])
-    circuits_2025 = set(tuple(item) for item in csv_audit["2025"]["keys"]["circuits"])
-
-    geo_circuits = inspect_geojson(CIRCUIT_GEOJSON, layer_kind="circuitos")
-    geo_circuit_keys = set(tuple(item) for item in geo_circuits["circuit_keys_by_name"])
-    dine_circuits_2023_by_name = set(tuple(item) for item in csv_audit["2023"]["keys"]["circuits_by_name"])
-    dine_circuits_2025_by_name = set(tuple(item) for item in csv_audit["2025"]["keys"]["circuits_by_name"])
-    matched_2023 = dine_circuits_2023_by_name & geo_circuit_keys
-    matched_2025 = dine_circuits_2025_by_name & geo_circuit_keys
-
-    def coverage(part, total):
-        return round(part / total * 100, 2) if total else 0
-
+    sources = discover_sources()
+    csv_audit = {source["id"]: inspect_csv(source) for source in sources}
     audit = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "csv": csv_audit,
-        "geojson": inspect_geojson(GEOJSON),
-        "circuit_geojson": geo_circuits,
-        "xls_2025_probe": file_probe(XLS_2025),
-        "dict_xlsx_probe": file_probe(DICT_XLSX),
-        "comparison": {
-            "circuits_2023": len(circuits_2023),
-            "circuits_2025": len(circuits_2025),
-            "circuits_intersection": len(circuits_2023 & circuits_2025),
-            "circuits_only_2023": len(circuits_2023 - circuits_2025),
-            "circuits_only_2025": len(circuits_2025 - circuits_2023),
-            "sample_only_2023": sorted(list(circuits_2023 - circuits_2025))[:20],
-            "sample_only_2025": sorted(list(circuits_2025 - circuits_2023))[:20],
-        },
-        "circuit_geo_comparison": {
-            "geo_circuit_keys": len(geo_circuit_keys),
-            "dine_circuits_2023": len(dine_circuits_2023_by_name),
-            "dine_circuits_2025": len(dine_circuits_2025_by_name),
-            "matched_2023": len(matched_2023),
-            "matched_2025": len(matched_2025),
-            "coverage_dine_2023_pct": coverage(len(matched_2023), len(dine_circuits_2023_by_name)),
-            "coverage_dine_2025_pct": coverage(len(matched_2025), len(dine_circuits_2025_by_name)),
-            "coverage_geo_2023_pct": coverage(len(matched_2023), len(geo_circuit_keys)),
-            "coverage_geo_2025_pct": coverage(len(matched_2025), len(geo_circuit_keys)),
-            "dine_only_2023": len(dine_circuits_2023_by_name - geo_circuit_keys),
-            "dine_only_2025": len(dine_circuits_2025_by_name - geo_circuit_keys),
-            "geo_only_2023": len(geo_circuit_keys - dine_circuits_2023_by_name),
-            "geo_only_2025": len(geo_circuit_keys - dine_circuits_2025_by_name),
-            "sample_dine_only_2023": sorted(list(dine_circuits_2023_by_name - geo_circuit_keys))[:30],
-            "sample_dine_only_2025": sorted(list(dine_circuits_2025_by_name - geo_circuit_keys))[:30],
-            "sample_geo_only_2023": sorted(list(geo_circuit_keys - dine_circuits_2023_by_name))[:30],
-            "sample_geo_only_2025": sorted(list(geo_circuit_keys - dine_circuits_2025_by_name))[:30],
-        },
+        "source_parties": inspect_source_parties(),
+        "source_circuits": inspect_source_circuits(csv_audit),
+        "app": inspect_app_artifacts(),
     }
 
-    (OUT_DIR / "auditoria_datos.json").write_text(
-        json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    (OUT_DIR / "auditoria_datos.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
     (OUT_DIR / "auditoria_datos.md").write_text(build_report(audit), encoding="utf-8")
-
     print(OUT_DIR / "auditoria_datos.md")
     print(OUT_DIR / "auditoria_datos.json")
 

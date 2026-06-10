@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[3]
 APP_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = APP_DIR / "data"
 DINE_DIR = ROOT / "02_Datos" / "01_DINE"
-CIRCUIT_GEOJSON = ROOT / "02_Datos" / "03_circuitoselectoralespba" / "01_CircuitosElectorales2025_PBA2.geojson"
-PARTY_GEOJSON = ROOT / "02_Datos" / "03_circuitoselectoralespba" / "02_PartidosPBA.geojson"
+CIRCUIT_GEOJSON = ROOT / "02_Datos" / "03_circuitoselectoralespba" / "01_CircuitosElectorales2025_PBA3.geojson"
+PARTY_GEOJSON = ROOT / "02_Datos" / "03_circuitoselectoralespba" / "02_PartidosPBA2.geojson"
 
 BLOCK_ALIASES = {
     "LA LIBERTAD AVANZA": "LLA",
@@ -88,6 +88,14 @@ def party_key_from_codes(province_id, department_id, valid_codes=None):
     if valid_codes and candidate not in valid_codes and fallback in valid_codes:
         return fallback
     return candidate
+
+
+def party_code(props):
+    return norm_text(props.get("CODIGO") or props.get("cde"))
+
+
+def party_name(props):
+    return props.get("NOMBRE") or props.get("nam") or props.get("fna") or props.get("departamen")
 
 
 def resolve_party_key(province_id, department_id, party_name, valid_codes, codes_by_name):
@@ -168,7 +176,7 @@ def pretty_label(value):
     return text[:1].upper() + text[1:]
 
 
-def read_results(source, circuit_party_lookup):
+def read_results(source, circuit_party_lookup, party_codes_by_name):
     buckets = defaultdict(empty_bucket)
     totals = {"rows": 0, "votes": 0, "electors": 0, "circuits": 0, "groups": Counter()}
 
@@ -177,9 +185,10 @@ def read_results(source, circuit_party_lookup):
         for row in reader:
             totals["rows"] += 1
             key = norm_circuit(row.get("circuito_id"))
+            party_lookup = circuit_party_lookup.get(key, {})
             bucket = buckets[key]
-            bucket["partido"] = title_name(row.get("seccion_nombre"))
-            bucket["partido_norm"] = circuit_party_lookup.get(key) or norm_name(row.get("seccion_nombre"))
+            bucket["partido"] = party_lookup.get("name") or title_name(row.get("seccion_nombre"))
+            bucket["partido_norm"] = party_lookup.get("key") or party_codes_by_name.get(norm_name(row.get("seccion_nombre"))) or norm_name(row.get("seccion_nombre"))
             bucket["seccion_id"] = norm_text(row.get("seccion_id"))
             bucket["seccionprovincial_id"] = norm_text(row.get("seccionprovincial_id"))
             bucket["seccionprovincial_nombre"] = norm_text(row.get("seccionprovincial_nombre"))
@@ -354,7 +363,7 @@ def slim_circuit_geojson(metrics):
     for feature in geo.get("features", []):
         props = feature.get("properties", {}) or {}
         key = norm_circuit(props.get("circuito"))
-        party_key = resolve_party_key(props.get("indec_p"), props.get("indec_d"), props.get("departamen"), valid_party_codes, party_codes_by_name)
+        party_key = party_code(props) or resolve_party_key(props.get("indec_p"), props.get("indec_d"), props.get("departamen"), valid_party_codes, party_codes_by_name)
         feature["properties"] = {
             "key": key,
             "partido": title_name(props.get("departamen")),
@@ -373,10 +382,10 @@ def slim_party_geojson(party_keys):
         geo = json.load(handle)
     for feature in geo.get("features", []):
         props = feature.get("properties", {}) or {}
-        key = norm_text(props.get("cde"))
+        key = party_code(props)
         feature["properties"] = {
             "key": key,
-            "partido": props.get("nam") or title_name(key),
+            "partido": party_name(props) or title_name(key),
             "partido_norm": key,
             "cde": key,
             "has_data": key in party_keys,
@@ -392,11 +401,11 @@ def load_party_lookup():
     by_name = {}
     for feature in geo.get("features", []):
         props = feature.get("properties", {}) or {}
-        code = norm_text(props.get("cde"))
+        code = party_code(props)
         if not code:
             continue
         codes.add(code)
-        by_name.setdefault(norm_name(props.get("nam") or props.get("fna")), code)
+        by_name.setdefault(norm_name(party_name(props)), code)
     return codes, by_name
 
 
@@ -408,21 +417,22 @@ def build_circuit_party_lookup():
     for feature in geo.get("features", []):
         props = feature.get("properties", {}) or {}
         circuit = norm_circuit(props.get("circuito"))
-        party_key = resolve_party_key(props.get("indec_p"), props.get("indec_d"), props.get("departamen"), valid_party_codes, party_codes_by_name)
-        lookup[circuit] = party_key
+        party_key = party_code(props) or resolve_party_key(props.get("indec_p"), props.get("indec_d"), props.get("departamen"), valid_party_codes, party_codes_by_name)
+        lookup[circuit] = {"key": party_key, "name": title_name(props.get("departamen"))}
     return lookup
 
 
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     sources = discover_sources()
+    _, party_codes_by_name = load_party_lookup()
     circuit_party_lookup = build_circuit_party_lookup()
     circuit_elections = {}
     party_elections = {}
     source_meta = []
 
     for source in sources:
-      data, totals = read_results(source, circuit_party_lookup)
+      data, totals = read_results(source, circuit_party_lookup, party_codes_by_name)
       circuit_elections[source["id"]] = data
       party_elections[source["id"]] = aggregate_party(data)
       source_meta.append({

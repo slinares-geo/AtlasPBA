@@ -6,7 +6,7 @@
     <title>Atlas Electoral PBA</title>
     <link rel="preconnect" href="https://unpkg.com" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="css/styles.css?v=05-csv-11" />
+    <link rel="stylesheet" href="css/styles.css?v=05-csv-16" />
   </head>
   <body>
     <div class="app-shell">
@@ -264,8 +264,9 @@
 
             <h3>Fuentes de datos</h3>
             <ul>
-              <li>DINE / resultados electorales: <a href="https://www.argentina.gob.ar/dine/resultados-electorales" target="_blank" rel="noreferrer">argentina.gob.ar/dine/resultados-electorales</a></li>
-              <li>Cartografía de partidos de Provincia de Buenos Aires desde datos abiertos: <a href="https://catalogo.datos.gba.gob.ar/sv/dataset/partidos" target="_blank" rel="noreferrer">catalogo.datos.gba.gob.ar/sv/dataset/partidos</a></li>
+              <li>DINE / resultados electorales: <a href="https://www.argentina.gob.ar/dine/resultados-electorales" target="_blank" rel="noreferrer">ACCEDER</a></li>
+              <li>Cartografía de partidos de Provincia de Buenos Aires desde datos abiertos: <a href="https://portalgeoestadistico.indec.gob.ar/" target="_blank" rel="noreferrer">ACCEDER</a></li>
+              <li>Cartografía digital de Circuitos Electorales de Buenos Aires, Cámara Nacional Electoral: <a href="https://mapa2.electoral.gov.ar/descargas/" target="_blank" rel="noreferrer">ACCEDER</a></li>
             </ul>
             <p>La aplicación integra datos electorales y cartográficos. Los resultados electorales se procesan para construir indicadores por unidad territorial y las capas cartográficas permiten representarlos espacialmente.</p>
 
@@ -288,30 +289,27 @@
             <p>La comparación temporal toma una elección base y una elección objetivo. Para cada métrica comparable, calcula la diferencia entre ambos momentos en la misma unidad territorial. El ranking ordena territorios según la métrica activa y el modo de análisis: mayor a menor, menor a mayor o intensidad absoluta del cambio.</p>
 
             <h3>Cómo leer el atlas</h3>
-            <ol>
-              <li>Seleccionar si se desea analizar una elección o comparar dos elecciones.</li>
-              <li>Elegir el indicador a mostrar en el mapa.</li>
-              <li>Ajustar fuerza política, tipo de voto o medida cuando corresponda.</li>
-              <li>Alternar entre Partido y Circuito según el nivel de detalle requerido.</li>
-              <li>Usar mapa, ranking, KPIs y asistente para construir una lectura territorial.</li>
-              <li>Interpretar los resultados como indicios exploratorios y contrastarlos con fuentes y conocimiento territorial.</li>
-            </ol>
-
-            <h3>Limitaciones</h3>
             <ul>
-              <li>Dependencia de disponibilidad, consistencia y actualización de las fuentes.</li>
-              <li>Posibles diferencias entre unidades cartográficas y electorales.</li>
-              <li>Necesidad de validación de correspondencias a nivel de circuito.</li>
-              <li>Interpretación exploratoria de indicadores, sin inferencia causal automática.</li>
+              <li>Seleccionar si se desea analizar una elección o comparar dos elecciones.</li>
+              <li>Elegir la elección objetivo y, si corresponde, la elección base.</li>
+              <li>Definir qué indicador mostrar en el mapa.</li>
+              <li>Si se analiza voto por fuerza o tipo de voto, ajustar los controles dependientes.</li>
+              <li>Alternar entre Partido y Circuito según el nivel de detalle requerido.</li>
+              <li>Usar el mapa para identificar patrones territoriales y el ranking para priorizar casos de interés.</li>
+              <li>Revisar los KPIs, la composición del voto y la lectura rápida para contextualizar los resultados.</li>
+              <li>Utilizar el asistente para explorar preguntas analíticas frecuentes.</li>
             </ul>
 
             <p class="methodology-doc-link"><a href="docs/documentacion-metodologica.md" target="_blank" rel="noreferrer">Ver documento metodológico completo</a></p>
           </div>
+          <footer class="methodology-foot">
+            Atlas Electoral PBA - V0.1.0 - Desarrollado por Santiago Linares y Juan Suasnábar - Contacto: <a href="mailto:slinaresgeo@gmail.com">slinaresgeo@gmail.com</a>
+          </footer>
         </article>
       </section>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="js/app.js?v=05-csv-22" type="module"></script>
+    <script src="js/app.js?v=05-csv-28" type="module"></script>
   </body>
 </html>

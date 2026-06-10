@@ -53,6 +53,14 @@ const FORCE_LABELS = {
 
 const STACK_FALLBACK_COLORS = ["#d94f70", "#238f9d", "#e7b84d", "#7b6d8d", "#5f8f53", "#b36b42"];
 
+const COMPETITIVENESS_CLASSES = [
+  { max: 0.05, label: "Muy competitiva", color: "#136f7b" },
+  { max: 0.10, label: "Competitiva", color: "#2f9daf" },
+  { max: 0.15, label: "Moderadamente competitiva", color: "#77bdc9" },
+  { max: 0.20, label: "Baja competitividad", color: "#c9d8d8" },
+  { max: Infinity, label: "Hegemónica", color: "#e6e3dc" },
+];
+
 const TOTAL_VOTE_SEGMENTS = [
   { key: "positivos", label: "Voto positivo", color: "#2f8d6f" },
   { key: "blanco", label: "Voto en blanco", color: COLORS.blanco },
@@ -174,8 +182,8 @@ const QUESTIONS = [
   {
     id: "cambios-intensos",
     group: "Comparación temporal",
-    label: "Cambios más intensos",
-    description: "Abre el cruce exploratorio para ubicar territorios con cambios fuertes de voto y participación.",
+    label: "Cambios más intensos del peronismo",
+    description: "Abre el cruce exploratorio para ubicar territorios con cambios fuertes del voto peronista y la competitividad.",
     mode: "comparison",
     indicator: "votos",
     voteType: "positivo",
@@ -340,6 +348,32 @@ function fmt(value, format) {
   if (format === "pct") return formatPct(value);
   if (format === "pp") return formatPp(value);
   return formatNumber(value);
+}
+
+function formatGapPp(value) {
+  return isFiniteNumber(value) ? `${(value * 100).toFixed(1)} pp` : "s/d";
+}
+
+function competitivenessCategory(gap) {
+  if (!isFiniteNumber(gap)) return null;
+  return COMPETITIVENESS_CLASSES.find((item) => gap <= item.max)?.label || null;
+}
+
+function competitivenessColor(gap) {
+  if (!isFiniteNumber(gap)) return "rgba(244,239,228,.22)";
+  return COMPETITIVENESS_CLASSES.find((item) => gap <= item.max)?.color || COMPETITIVENESS_CLASSES[COMPETITIVENESS_CLASSES.length - 1].color;
+}
+
+function competitivenessVoteGap(row) {
+  if (!row) return null;
+  const gap = (row.ganador_votos || 0) - (row.segundo_votos || 0);
+  return Number.isFinite(gap) ? Math.max(0, gap) : null;
+}
+
+function winnerShare(row) {
+  if (!row?.ganador || !row.positivos) return null;
+  const votes = row.fuerzas?.[row.ganador] ?? row.ganador_votos;
+  return isFiniteNumber(votes) ? votes / row.positivos : null;
 }
 
 function escapeHtml(value) {
@@ -540,6 +574,29 @@ function mapTooltipHtml(feature, unit) {
   const label = unit === "party" ? feature.properties.partido : `${feature.properties.partido} · ${feature.properties.circuito}`;
   const value = valueForFeature(feature, unit);
   const targetRow = rowForFeature(feature, unit, state.targetElection);
+  if (state.activeQuestion?.mapMode === "winner") {
+    return `
+      <div class="tooltip-title">${escapeHtml(label)}</div>
+      <div class="tooltip-unit">${unitLabel(unit, false)}</div>
+      <div class="tooltip-value">Fuerza predominante: <strong>${escapeHtml(targetRow?.ganador || "sin dato")}</strong></div>
+      <div class="tooltip-value">Voto positivo: <strong>${escapeHtml(formatPct(winnerShare(targetRow)))}</strong></div>
+    `;
+  }
+  if (state.indicator === "competitividad") {
+    const category = competitivenessCategory(targetRow?.margen) || "Sin categoría";
+    const gapVotes = competitivenessVoteGap(targetRow);
+    const changeLine = state.viewMode === "comparison"
+      ? `<div class="tooltip-value">Cambio de brecha: <strong>${escapeHtml(formatPp(value))}</strong></div>`
+      : "";
+    return `
+      <div class="tooltip-title">${escapeHtml(label)}</div>
+      <div class="tooltip-unit">Competitividad electoral</div>
+      <div class="tooltip-category">${escapeHtml(category)}</div>
+      <div class="tooltip-value">Diferencia: <strong>${escapeHtml(formatGapPp(targetRow?.margen))}</strong></div>
+      <div class="tooltip-value">Brecha: <strong>${escapeHtml(formatNumber(gapVotes))} votos</strong></div>
+      ${changeLine}
+    `;
+  }
   const gapWinnerNote = isGapWinnerMetric() && value === null && selectedForceIsFirst(targetRow)
     ? `<div class="tooltip-value">La fuerza seleccionada es primera fuerza en este territorio.</div>`
     : `<div class="tooltip-value">${escapeHtml(metricTooltipLabel())}: <strong>${escapeHtml(fmt(value, metricFormat()))}</strong></div>`;
@@ -599,6 +656,7 @@ function colorFor(value) {
 function mapFillColor(key, unit) {
   const row = unitData(unit, state.targetElection)[key] || unitData(unit, state.baseElection)[key];
   if (state.activeQuestion?.mapMode === "winner" && row?.ganador) return forceMapColor(row.ganador);
+  if (state.indicator === "competitividad" && state.viewMode !== "comparison") return competitivenessColor(row?.margen);
   return colorFor(valueFor(key, unit));
 }
 
@@ -721,6 +779,15 @@ function renderLegend() {
     `;
     return;
   }
+  if (state.indicator === "competitividad" && state.viewMode !== "comparison") {
+    els.legend.innerHTML = `
+      <div class="legend-title">Competitividad electoral</div>
+      <div class="competitiveness-legend">
+        ${COMPETITIVENESS_CLASSES.map((item) => `<div><i style="background:${item.color}"></i><span>${item.label}</span></div>`).join("")}
+      </div>
+    `;
+    return;
+  }
   const formatter = metricFormat() === "pp" ? formatPp : metricFormat() === "pct" ? formatPct : formatNumber;
   const domain = metricDomain();
   const values = rankedRows().map((row) => row.value).filter(isFiniteNumber);
@@ -767,13 +834,32 @@ function renderRanking(sortDirection = null) {
   if (els.rankingContext) {
     els.rankingContext.textContent = state.viewMode === "comparison" ? `${electionLabel(state.baseElection)} vs ${electionLabel(state.targetElection)}` : electionLabel(state.targetElection);
   }
-  els.rankingList.innerHTML = rows.slice(0, 40).map((item, index) => `
+  els.rankingList.innerHTML = rows.map((item, index) => rankingItemHtml(item, index)).join("");
+}
+
+function rankingItemHtml(item, index) {
+  if (state.indicator === "competitividad") return competitivenessRankingItemHtml(item, index);
+  return `
     <button class="ranking-item ${isSelected(item.key, item.unit) ? "is-active" : ""}" data-key="${item.key}" data-unit="${item.unit}">
       <span class="rank-index">${String(index + 1).padStart(2, "0")}</span>
-      <span><strong>${territoryLabel(item.key, item.unit)}</strong><span>${item.unit === "party" ? "Partido" : "Circuito electoral"}</span></span>
-      <span class="rank-value">${fmt(item.value, metricFormat())}</span>
+      <span><strong>${escapeHtml(territoryLabel(item.key, item.unit))}</strong><span>${item.unit === "party" ? "Partido" : "Circuito electoral"}</span></span>
+      <span class="rank-value">${escapeHtml(fmt(item.value, metricFormat()))}</span>
     </button>
-  `).join("");
+  `;
+}
+
+function competitivenessRankingItemHtml(item, index) {
+  const target = unitData(item.unit, state.targetElection)[item.key];
+  const category = competitivenessCategory(target?.margen) || "Sin categoría";
+  const gapVotes = competitivenessVoteGap(target);
+  const change = state.viewMode === "comparison" ? `<small>Cambio: ${escapeHtml(formatPp(item.value))}</small>` : "";
+  return `
+    <button class="ranking-item ranking-item-competitiveness ${isSelected(item.key, item.unit) ? "is-active" : ""}" data-key="${item.key}" data-unit="${item.unit}">
+      <span class="rank-index">${String(index + 1).padStart(2, "0")}</span>
+      <span><strong>${escapeHtml(territoryLabel(item.key, item.unit))}</strong><span class="rank-category">${escapeHtml(category)}</span></span>
+      <span class="rank-value"><b>${escapeHtml(formatGapPp(target?.margen))}</b><small>${escapeHtml(formatNumber(gapVotes))} votos</small>${change}</span>
+    </button>
+  `;
 }
 
 function isSelected(key, unit) {
@@ -846,13 +932,14 @@ function kpi(label, value, note = "") {
 }
 
 function competitivenessBlock(base, target) {
-  const voteGap = Math.max(0, (target?.ganador_votos || 0) - (target?.segundo_votos || 0));
+  const category = competitivenessCategory(target?.margen) || "Sin categoría";
+  const voteGap = competitivenessVoteGap(target);
   return `
     <div class="kpi-item kpi-competitiveness">
-      <span>Competitividad</span>
-      <strong>${formatPct(target.margen)}</strong>
-      <i>brecha: ${formatNumber(voteGap)} votos</i>
-      <p>Diferencia entre la primera y la segunda fuerza sobre votos positivos. Cuanto menor es el margen, mas competitivo es el territorio.</p>
+      <span class="kpi-title-row">Competitividad electoral <button class="kpi-info-button" type="button" data-competitiveness-info aria-label="Abrir metodología de competitividad electoral">i</button></span>
+      <strong>${category}</strong>
+      <i>Diferencia: ${formatGapPp(target?.margen)}</i>
+      <p>Brecha: ${formatNumber(voteGap)} votos</p>
     </div>
   `;
 }
@@ -1001,7 +1088,7 @@ function renderAssistantResponse() {
 function assistantNarrative(question) {
   const effectiveUnit = effectiveQuestionUnit(question);
   const rows = sortedRowsForQuestion(question).slice(0, 3);
-  const territories = rows.map((row) => `${territoryLabel(row.key, row.unit || effectiveUnit)} (${fmt(row.value, metricFormat())})`).join(", ");
+  const territories = rows.map((row) => narrativeTerritory(row, effectiveUnit)).join(", ");
   const currentUnitLabel = unitLabel(effectiveUnit, true);
   const context = state.viewMode === "comparison"
     ? `Comparo ${electionLabel(state.baseElection)} contra ${electionLabel(state.targetElection)}.`
@@ -1019,7 +1106,19 @@ function assistantNarrative(question) {
     return `${context} Pinté cada ${unitLabel(winnerUnit, false)} según la fuerza más votada. La distribución territorial de ganadores queda así: ${winners}. Para ver intensidad dentro de una fuerza, elegí una pregunta de fortaleza o debilidad.`;
   }
   const sizeNote = question.filter === "largeElectorate" ? ` La lectura excluye la mitad de ${currentUnitLabel} con menor padrón para concentrarse en zonas electoralmente más grandes.` : "";
-  return `${context} ${question.description} Sobresalen ${territories}. ${action}${sizeNote}`;
+  const competitivenessNote = state.indicator === "competitividad" && rows.length
+    ? " La categoría resume la brecha entre primera y segunda fuerza: menos de 5 pp indica una elección muy competitiva."
+    : "";
+  return `${context} ${question.description} Sobresalen ${territories}. ${action}${sizeNote}${competitivenessNote}`;
+}
+
+function narrativeTerritory(row, effectiveUnit) {
+  const unit = row.unit || effectiveUnit;
+  const label = territoryLabel(row.key, unit);
+  if (state.indicator !== "competitividad") return `${label} (${fmt(row.value, metricFormat())})`;
+  const target = unitData(unit, state.targetElection)[row.key];
+  const category = competitivenessCategory(target?.margen) || "sin categoría";
+  return `${label} (${category}, ${formatGapPp(target?.margen)})`;
 }
 
 function sortedRowsForQuestion(question) {
@@ -1137,13 +1236,28 @@ function renderHighlightPins() {
       }),
       interactive: true,
     });
-    marker.bindTooltip(`${territoryLabel(row.key, unit)} · ${fmt(row.value, metricFormat())}`, { className: "map-tooltip", sticky: true });
+    marker.bindTooltip(rowTooltipHtml(row, unit), { className: "map-tooltip", sticky: true });
     marker.on("click", () => focusUnitOnMap(unit, row.key));
     marker.addTo(state.highlightPinLayer);
   });
   if (missingCentroids) {
     console.warn(`No se pudieron calcular ${missingCentroids} centroides de ${unitLabel(unit, true)} para los pins.`);
   }
+}
+
+function rowTooltipHtml(row, unit) {
+  const target = unitData(unit, state.targetElection)[row.key];
+  if (state.indicator === "competitividad") {
+    const category = competitivenessCategory(target?.margen) || "Sin categoría";
+    return `
+      <div class="tooltip-title">${escapeHtml(territoryLabel(row.key, unit))}</div>
+      <div class="tooltip-unit">Competitividad electoral</div>
+      <div class="tooltip-category">${escapeHtml(category)}</div>
+      <div class="tooltip-value">Diferencia: <strong>${escapeHtml(formatGapPp(target?.margen))}</strong></div>
+      <div class="tooltip-value">Brecha: <strong>${escapeHtml(formatNumber(competitivenessVoteGap(target)))} votos</strong></div>
+    `;
+  }
+  return `${escapeHtml(territoryLabel(row.key, unit))} · ${escapeHtml(fmt(row.value, metricFormat()))}`;
 }
 
 function unitCentroid(unit, key) {
@@ -1826,22 +1940,31 @@ function renderScatter() {
 
 function drawScatter(points, xMetric, yMetric) {
   const svg = els.scatterChart;
+  if (!svg) return;
   const width = svg.clientWidth || 620;
   const height = svg.clientHeight || 340;
   const margin = { top: 18, right: 18, bottom: 42, left: 58 };
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.innerHTML = "";
   if (!points.length) {
     els.scatterStats.textContent = "No hay datos suficientes para este cruce.";
     return;
   }
-  const xExtent = extent(points.map((p) => p.x));
-  const yExtent = extent(points.map((p) => p.y));
+  const xExtent = extentWithZero(points.map((p) => p.x));
+  const yExtent = extentWithZero(points.map((p) => p.y));
+  if (!validExtent(xExtent) || !validExtent(yExtent)) {
+    els.scatterStats.textContent = "No hay datos suficientes para este cruce.";
+    return;
+  }
   const x = (v) => margin.left + ((v - xExtent[0]) / (xExtent[1] - xExtent[0] || 1)) * (width - margin.left - margin.right);
   const y = (v) => height - margin.bottom - ((v - yExtent[0]) / (yExtent[1] - yExtent[0] || 1)) * (height - margin.top - margin.bottom);
   addSvg(svg, "rect", { x: margin.left, y: margin.top, width: width - margin.left - margin.right, height: height - margin.top - margin.bottom, class: "plot-bg" });
   addSvg(svg, "line", { x1: margin.left, x2: width - margin.right, y1: height - margin.bottom, y2: height - margin.bottom, class: "axis-line" });
   addSvg(svg, "line", { x1: margin.left, x2: margin.left, y1: margin.top, y2: height - margin.bottom, class: "axis-line" });
+  addSvg(svg, "line", { x1: x(0), x2: x(0), y1: margin.top, y2: height - margin.bottom, class: "reference-line" });
+  addSvg(svg, "line", { x1: margin.left, x2: width - margin.right, y1: y(0), y2: y(0), class: "reference-line" });
+  addScatterAxisLabels(svg, xExtent, yExtent, x, y, xMetric, yMetric, width, height, margin);
   const fit = trend(points);
   if (fit) addSvg(svg, "line", { x1: x(xExtent[0]), y1: y(fit.slope * xExtent[0] + fit.intercept), x2: x(xExtent[1]), y2: y(fit.slope * xExtent[1] + fit.intercept), class: "trend-line" });
   const plotted = points.map((point) => ({ ...point, cx: x(point.x), cy: y(point.y) }));
@@ -1859,11 +1982,59 @@ function drawScatter(points, xMetric, yMetric) {
   setupBrush(svg, plotted);
 }
 
+function addScatterAxisLabels(svg, xExtent, yExtent, x, y, xMetric, yMetric, width, height, margin) {
+  if (!svg || typeof x !== "function" || typeof y !== "function") return;
+  if (!validExtent(xExtent) || !validExtent(yExtent)) return;
+  if (![width, height, margin?.top, margin?.right, margin?.bottom, margin?.left].every(Number.isFinite)) return;
+  const x0 = x(0);
+  const y0 = y(0);
+  if (!Number.isFinite(x0) || !Number.isFinite(y0)) return;
+  const xBase = height - margin.bottom;
+  const yAxis = margin.left;
+  addAxisText(svg, axisTickLabel(xExtent[0], xMetric), margin.left, xBase + 15, "axis-tick", "start");
+  addAxisText(svg, "0", x0, xBase + 15, "axis-tick axis-zero-label", "middle");
+  addAxisText(svg, axisTickLabel(xExtent[1], xMetric), width - margin.right, xBase + 15, "axis-tick", "end");
+  addAxisText(svg, axisTickLabel(yExtent[1], yMetric), yAxis - 9, margin.top + 4, "axis-tick", "end");
+  addAxisText(svg, "0", yAxis - 9, y0 + 4, "axis-tick axis-zero-label", "end");
+  addAxisText(svg, axisTickLabel(yExtent[0], yMetric), yAxis - 9, height - margin.bottom, "axis-tick", "end");
+}
+
+function addAxisText(svg, text, x, y, className, anchor) {
+  if (!svg || text == null || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const node = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  if (!node) return null;
+  node.setAttribute("x", x);
+  node.setAttribute("y", y);
+  if (className) node.setAttribute("class", className);
+  if (anchor) node.setAttribute("text-anchor", anchor);
+  node.textContent = text;
+  svg.appendChild(node);
+  return node;
+}
+
+function axisTickLabel(value, metric) {
+  if (!isFiniteNumber(value)) return "s/d";
+  if (Math.abs(value) < 0.0005) return "0";
+  if (metric?.format === "pp" || metric?.format === "pct") return `${value > 0 ? "+" : ""}${(value * 100).toFixed(1)}`;
+  return formatNumber(value);
+}
+
 function extent(values) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const pad = (max - min || 1) * 0.08;
   return [min - pad, max + pad];
+}
+
+function extentWithZero(values) {
+  return extent([...values, 0]);
+}
+
+function validExtent(extentValue) {
+  return Array.isArray(extentValue) &&
+    extentValue.length === 2 &&
+    extentValue.every(Number.isFinite) &&
+    extentValue[0] !== extentValue[1];
 }
 
 function trend(points) {
@@ -1948,6 +2119,54 @@ function closeMethodology() {
   els.openMethodology.focus();
 }
 
+function openCompetitivenessInfo() {
+  let popup = document.querySelector("#competitivenessInfo");
+  if (!popup) {
+    popup = document.createElement("section");
+    popup.id = "competitivenessInfo";
+    popup.className = "competitiveness-info-modal";
+    popup.setAttribute("role", "dialog");
+    popup.setAttribute("aria-modal", "true");
+    popup.setAttribute("aria-labelledby", "competitivenessInfoTitle");
+    popup.innerHTML = `
+      <div class="competitiveness-info-backdrop" data-competitiveness-close></div>
+      <article class="competitiveness-info-panel" tabindex="-1">
+        <header>
+          <h2 id="competitivenessInfoTitle">Competitividad electoral</h2>
+          <button type="button" data-competitiveness-close aria-label="Cerrar metodología de competitividad">x</button>
+        </header>
+        <div class="competitiveness-info-content">
+          <p>La competitividad electoral se define como la diferencia en puntos porcentuales entre la primera y la segunda fuerza más votadas en un territorio.</p>
+          <p>Cuanto menor es esa diferencia, más competitiva es la elección, en tanto un número relativamente pequeño de votos puede modificar los resultados.</p>
+          <p>Por el contrario, cuando la brecha es amplia, la posición de la fuerza ganadora resulta más difícil de alterar mediante variaciones pequeñas del voto.</p>
+          <h3>Clasificación</h3>
+          <ul>
+            <li>0 a 5 pp: Muy competitiva</li>
+            <li>Más de 5 a 10 pp: Competitiva</li>
+            <li>Más de 10 a 15 pp: Moderadamente competitiva</li>
+            <li>Más de 15 a 20 pp: Baja competitividad</li>
+            <li>Más de 20 pp: Hegemónica</li>
+          </ul>
+          <p>La diferencia en puntos porcentuales permite comparar territorios de distinto tamaño. La brecha en votos muestra la magnitud absoluta de la diferencia entre la primera y la segunda fuerza.</p>
+        </div>
+      </article>
+    `;
+    document.body.appendChild(popup);
+    popup.addEventListener("click", (event) => {
+      if (event.target.matches("[data-competitiveness-close]")) closeCompetitivenessInfo();
+    });
+  }
+  popup.classList.add("is-open");
+  popup.querySelector(".competitiveness-info-panel")?.focus();
+}
+
+function closeCompetitivenessInfo() {
+  const popup = document.querySelector("#competitivenessInfo");
+  if (!popup) return;
+  popup.classList.remove("is-open");
+  document.querySelector("[data-competitiveness-info]")?.focus();
+}
+
 function makeDraggable(panel, handleSelector) {
   let drag = null;
   const handle = panel.querySelector(handleSelector);
@@ -2011,9 +2230,9 @@ function pinCurrentPartyMap() {
 
 async function init() {
   const [data, partyGeojson, circuitGeojson] = await Promise.all([
-    fetch("data/electoral_data.json").then((r) => r.json()),
-    fetch("data/partidos_pba.geojson").then((r) => r.json()),
-    fetch("data/circuitos_pba.geojson?v=pba2-20250605").then((r) => r.json()),
+    fetch("data/electoral_data.json?v=pba3-20260610").then((r) => r.json()),
+    fetch("data/partidos_pba.geojson?v=pba3-20260610").then((r) => r.json()),
+    fetch("data/circuitos_pba.geojson?v=pba3-20260610").then((r) => r.json()),
   ]);
   state.data = data;
   state.partyGeojson = partyGeojson;
@@ -2065,6 +2284,9 @@ els.openMethodology.addEventListener("click", openMethodology);
 els.closeMethodology.addEventListener("click", closeMethodology);
 els.methodologyModal.addEventListener("click", (event) => {
   if (event.target.matches("[data-methodology-close]")) closeMethodology();
+});
+els.kpiStrip.addEventListener("click", (event) => {
+  if (event.target.closest("[data-competitiveness-info]")) openCompetitivenessInfo();
 });
 els.resetMap.addEventListener("click", resetView);
 els.mapLevelParty.addEventListener("click", () => setMapLevel("party"));
@@ -2119,6 +2341,7 @@ window.addEventListener("afterprint", () => {
 });
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !els.methodologyModal.hidden) closeMethodology();
+  if (event.key === "Escape") closeCompetitivenessInfo();
 });
 window.addEventListener("resize", () => { state.map?.invalidateSize(); state.circuitMap?.invalidateSize(); if (!els.scatterPanel.classList.contains("is-hidden")) renderScatter(); });
 

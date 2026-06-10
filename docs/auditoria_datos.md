@@ -1,160 +1,94 @@
 # Auditoria de datos electorales PBA
 
-Generado: 2026-06-01T09:28:45
+Generado: 2026-06-10T09:27:51
 
-## Resumen ejecutivo
+## Alcance vigente
 
-- Los CSV DINE 2023 y 2025 tienen estructura compatible para una primera normalizacion electoral.
-- Ambos archivos incluyen `seccion_id`, `seccion_nombre`, `circuito_id`, `circuito_nombre`, `mesa_id`, `mesa_electores`, `agrupacion_nombre`, `votos_tipo` y `votos_cantidad`.
-- La unidad electoral de resultados puede reconstruirse a nivel mesa, circuito, partido/departamento y provincia.
-- La cartografia departamental disponible en `04_DepartamentosElecciones.geojson` esta a nivel partido/departamento.
-- La nueva cartografia `circuitos-electorales-pba.geojson` permite avanzar con el objetivo principal a nivel circuito, usando una clave normalizada partido + circuito.
+- Esta auditoria corresponde a la app `05_MapaElectoral_Cockpit_CSV`.
+- Capa de partidos fuente: `02_PartidosPBA2.geojson`.
+- Capa de circuitos fuente: `01_CircuitosElectorales2025_PBA3.geojson`.
+- La clave de union de partido es `CODIGO`.
+- La clave de union de circuito es `circuito`, normalizada sin ceros iniciales y conservando sufijos alfabeticos.
+- Los artefactos auditados son `electoral_data.json`, `partidos_pba.geojson` y `circuitos_pba.geojson` dentro de `data/`.
 
-## Inventario de resultados
+## Inventario CSV DINE
 
-| anio | archivo | filas | secciones | circuitos | mesas | electores | votos | participacion_est |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2023 | 02_Datos\01_DINE\01_2023\presentacionDeResultados_presidenciales_2023.csv | 226.998 | 135 | 1039 | 37.833 | 13.052.907 | 10.017.387 | 76.74% |
-| 2025 | 02_Datos\01_DINE\02_2025\presentacionDeResultados_Diputados_2025.csv | 775.200 | 135 | 1047 | 38.760 | 13.349.014 | 9.013.159 | 67.52% |
+| eleccion | archivo | filas | circuitos | mesas | electores | votos | participacion_est |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2023 · General · Presidente/a | 02_Datos\01_DINE\01_2023\01_ResultadosGeneralesPresidencialesPBA2023.csv | 380.740 | 1047 | 38.074 | 13.124.435 | 10.199.399 | 77.71% |
+| 2023 · Segunda vuelta · Presidente y vice | 02_Datos\01_DINE\01_2023\02_ResultadosSegundaPresidencialesPBA2023.csv | 226.998 | 1039 | 37.833 | 13.052.907 | 10.017.387 | 76.74% |
+| 2023 · General · Gobernador/a | 02_Datos\01_DINE\01_2023\03_ResultadosGeneralesGobernadorPBA2023.csv | 361.809 | 1047 | 40.201 | 14.073.604 | 10.439.895 | 74.18% |
+| 2025 · Generales · Diputado nacional | 02_Datos\01_DINE\02_2025\01_ResultadosDiputadosGeneralesPBA2025.csv | 775.200 | 1047 | 38.760 | 13.349.014 | 9.013.159 | 67.52% |
 
-Nota: `participacion_est` se calcula como suma de votos registrados / electores unicos por mesa. Debe validarse contra totales oficiales antes de publicar.
+Nota: `participacion_est` se calcula como suma de votos registrados / electores unicos por mesa.
 
-## Compatibilidad territorial 2023-2025
+## Capas fuente
 
-- Circuitos 2023: 1039
-- Circuitos 2025: 1047
-- Circuitos en ambos anios: 1033
-- Circuitos solo en 2023: 6
-- Circuitos solo en 2025: 14
+- Partidos fuente: 135 features, 135 CODIGO unicos.
+- Circuitos fuente: 1153 features, 1153 circuitos unicos.
+- CODIGO de partido presentes en circuitos fuente: 135.
+- Features de circuito sin `CODIGO`: 0.
+- Features de circuito sin `circuito`: 0.
+- CODIGO duplicados en partidos fuente: ninguno.
 
-La comparacion por circuito es viable en datos tabulares y la nueva capa permite mapearla con cobertura casi completa.
+Partidos criticos en la capa fuente:
 
-## Fuerzas principales detectadas
+| codigo | esperado | nombre_fuente |
+| --- | --- | --- |
+| 06218 | Chascomús | Chascomús |
+| 06466 | Lezama | Lezama |
+| 06371 | General San Martín | General San Martín |
 
-### 2023
+## Cobertura circuito contra capa PBA3
 
-| fuerza | votos_positivos |
-| --- | --- |
-| UNION POR LA PATRIA | 4.919.211 |
-| LA LIBERTAD AVANZA | 4.776.711 |
+| eleccion | circuitos_dine | match | cobertura_dine | dine_sin_geo | geo_sin_datos |
+| --- | --- | --- | --- | --- | --- |
+| 2023 · General · Presidente/a | 1047 | 1045 | 99.81% | 2 | 108 |
+| 2023 · Segunda vuelta · Presidente y vice | 1039 | 1037 | 99.81% | 2 | 116 |
+| 2023 · General · Gobernador/a | 1047 | 1045 | 99.81% | 2 | 108 |
+| 2025 · Generales · Diputado nacional | 1047 | 1047 | 100.0% | 0 | 106 |
 
-### 2025
+Muestras de circuitos DINE sin geometria:
 
-| fuerza | votos_positivos |
-| --- | --- |
-| ALIANZA LA LIBERTAD AVANZA | 3.605.127 |
-| ALIANZA FUERZA PATRIA | 3.558.527 |
-| FRENTE DE IZQUIERDA Y DE TRABAJADORES - UNIDAD | 438.747 |
-| PROPUESTA FEDERAL PARA EL CAMBIO | 243.326 |
-| ALIANZA PROVINCIAS UNIDAS | 212.959 |
-| PARTIDO NUEVO BUENOS AIRES | 116.670 |
-| FRENTE PATRIOTA FEDERAL | 104.965 |
-| ALIANZA UNIÓN FEDERAL | 78.125 |
-| COALICIÓN CÍVICA - A.R.I. | 69.358 |
-| ALIANZA POTENCIA | 61.209 |
-| MOVIMIENTO POLÍTICO SOCIAL Y CULTURAL PROYECTO SUR | 52.563 |
-| MOVIMIENTO AVANZADA SOCIALISTA | 49.482 |
+- 2023 · General · Presidente/a: ['383', '388']
+- 2023 · Segunda vuelta · Presidente y vice: ['383', '388']
+- 2023 · General · Gobernador/a: ['383', '388']
+- 2025 · Generales · Diputado nacional: ninguno
 
-## Tipos de voto
+## Artefactos normalizados de la app
 
-### 2023
+- `electoral_data.json` generado: 2026-06-10T09:14:28.
+- Elecciones procesadas: 4.
+- GeoJSON partidos app: 135 features, 135 claves unicas.
+- GeoJSON circuitos app: 1153 features, 1153 claves unicas.
 
-| tipo | votos |
-| --- | --- |
-| POSITIVO | 9.695.922 |
-| EN BLANCO | 178.640 |
-| NULO | 136.904 |
-| RECURRIDO | 3.427 |
-| IMPUGNADO | 2.494 |
+| eleccion | partidos | circuitos_datos | partidos_sin_geo | circuitos_sin_geo |
+| --- | --- | --- | --- | --- |
+| 2023 · General · Presidente/a | 135 | 1047 | 0 | 2 |
+| 2023 · Segunda vuelta · Presidente y vice | 135 | 1039 | 0 | 2 |
+| 2023 · General · Gobernador/a | 135 | 1047 | 0 | 2 |
+| 2025 · Generales · Diputado nacional | 135 | 1047 | 0 | 0 |
 
-### 2025
+## Validacion de partidos criticos en datos agregados
 
-| tipo | votos |
-| --- | --- |
-| POSITIVO | 8.696.636 |
-| NULO | 206.177 |
-| EN BLANCO | 103.947 |
-| RECURRIDO | 4.277 |
-| IMPUGNADO | 2.122 |
-| COMANDO | 0 |
+| eleccion | codigo | esperado | nombre | circuitos | electores | votantes |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2023 · General · Presidente/a | 06218 | Chascomús | Chascomús | 6 | 35.319 | 27.578 |
+| 2023 · General · Presidente/a | 06466 | Lezama | Lezama | 1 | 4.965 | 4.148 |
+| 2023 · General · Presidente/a | 06371 | General San Martín | General San Martín | 11 | 351.839 | 265.803 |
+| 2023 · Segunda vuelta · Presidente y vice | 06218 | Chascomús | Chascomús | 6 | 35.366 | 26.756 |
+| 2023 · Segunda vuelta · Presidente y vice | 06466 | Lezama | Lezama | 1 | 4.968 | 3.862 |
+| 2023 · Segunda vuelta · Presidente y vice | 06371 | General San Martín | General San Martín | 11 | 350.871 | 265.179 |
+| 2023 · General · Gobernador/a | 06218 | Chascomús | Chascomús | 6 | 35.936 | 27.737 |
+| 2023 · General · Gobernador/a | 06466 | Lezama | Lezama | 1 | 5.060 | 4.173 |
+| 2023 · General · Gobernador/a | 06371 | General San Martín | General San Martín | 11 | 397.173 | 273.079 |
+| 2025 · Generales · Diputado nacional | 06218 | Chascomús | Chascomús | 6 | 35.945 | 23.816 |
+| 2025 · Generales · Diputado nacional | 06466 | Lezama | Lezama | 1 | 5.022 | 3.467 |
+| 2025 · Generales · Diputado nacional | 06371 | General San Martín | General San Martín | 12 | 378.078 | 242.835 |
 
-## Cartografia disponible
+## Lectura operativa
 
-### Departamentos
-
-- Archivo: `02_Datos\02_Poblaciones 2023\04_DepartamentosElecciones.geojson`
-- Features: 135
-- Tamanio: 6.34 MB
-- Tipos geometricos: {'MultiPolygon': 135}
-- Campos con apariencia de circuito: ninguno
-
-Campos principales observados:
-
-B_LISTA134, B_LISTA135, B_PARTIDO_, B_TOTAL_VO, B_VOTOS_PA, CODDPTO, CODPROV, COD_DPTO, DEPARTAMEN, DEPARTAM_1, DEPARTAM_2, DEPARTAM_3, DEPARTAM_4, DPTO, G_LISTA132, G_LISTA133, G_LISTA134, G_LISTA135, G_LISTA136, G_PARTIDO_, G_VOTOS_PA, O_FEDERAL, O_IZQUIERD, O_KIRCHNER, O_LIBERTAR, O_REPUBLIC, PROV, V_POSITIVO
-
-Conclusion: esta capa sirve para un MVP departamental, pero no para pintar circuitos.
-
-### Circuitos electorales
-
-- Archivo: `02_Datos\03_circuitoselectoralespba\circuitos-electorales-pba.geojson`
-- Features: 1150
-- Tamanio: 8.41 MB
-- Tipos geometricos: {'MultiPolygon': 1150}
-- Campos principales de union: `departamen`, `circuito`.
-- Features sin clave de union aparente: 0
-
-Compatibilidad contra resultados DINE usando `seccion_nombre/departamen` normalizado + `circuito_id/circuito` normalizado:
-
-- Claves cartograficas de circuito: 1146
-- Match con circuitos 2023: 1035 de 1039 DINE; cobertura DINE 99.62%; cobertura geometrica 90.31%.
-- Match con circuitos 2025: 1045 de 1047 DINE; cobertura DINE 99.81%; cobertura geometrica 91.19%.
-- Circuitos DINE 2023 sin geometria: 4.
-- Circuitos DINE 2025 sin geometria: 2.
-- Geometrias sin resultados 2023: 111.
-- Geometrias sin resultados 2025: 101.
-
-Muestras de no apareados:
-
-- DINE 2023 sin geometria: [('FLORENTINO AMEGHINO', '361A'), ('GENERAL SAN MARTIN', '383'), ('GENERAL SAN MARTIN', '388'), ('PUAN', '779')]
-- DINE 2025 sin geometria: [('FLORENTINO AMEGHINO', '361A'), ('PUAN', '779')]
-- Geometrias sin DINE 2023: [('ADOLFO ALSINA', '2'), ('ADOLFO ALSINA', '4'), ('ALMIRANTE BROWN', '22C'), ('AYACUCHO', '48'), ('AYACUCHO', '49'), ('AYACUCHO', '51'), ('AYACUCHO', '53'), ('AYACUCHO', '54'), ('AZUL', '64'), ('AZUL', '68'), ('AZUL', '69'), ('BARADERO', '108'), ('BARADERO', '109'), ('BARADERO', '114'), ('BENITO JUAREZ', '438'), ('BENITO JUAREZ', '442'), ('BOLIVAR', '130'), ('CANUELAS', '160'), ('CANUELAS', '161'), ('CANUELAS', '162'), ('CARLOS TEJEDOR', '171A'), ('CASTELLI', '186'), ('CHACABUCO', '192'), ('CHACABUCO', '194'), ('CHACABUCO', '196'), ('CHASCOMUS', '206'), ('CHASCOMUS', '208'), ('CHASCOMUS', '209A'), ('CHIVILCOY', '213'), ('CHIVILCOY', '214')]
-- Geometrias sin DINE 2025: [('ADOLFO ALSINA', '2'), ('ADOLFO ALSINA', '4'), ('AYACUCHO', '48'), ('AYACUCHO', '49'), ('AYACUCHO', '51'), ('AYACUCHO', '53'), ('AYACUCHO', '56'), ('AZUL', '64'), ('AZUL', '68'), ('AZUL', '69'), ('BARADERO', '108'), ('BARADERO', '109'), ('BARADERO', '114'), ('BENITO JUAREZ', '438'), ('BENITO JUAREZ', '442'), ('BOLIVAR', '130'), ('CANUELAS', '161'), ('CARLOS TEJEDOR', '171A'), ('CASTELLI', '186'), ('CHACABUCO', '192'), ('CHACABUCO', '194'), ('CHACABUCO', '196'), ('CHASCOMUS', '206'), ('CHASCOMUS', '208'), ('CHASCOMUS', '209A'), ('CHIVILCOY', '213'), ('CHIVILCOY', '214'), ('CHIVILCOY', '217'), ('CHIVILCOY', '223'), ('CHIVILCOY', '225')]
-
-## Observaciones para homologacion politica
-
-- La comparacion solicitada entre La Libertad Avanza y peronismo/kirchnerismo requiere una tabla de homologacion de fuerzas.
-- Homologacion inicial sugerida:
-  - `LA LIBERTAD AVANZA` (2023) -> bloque `LLA`.
-  - `ALIANZA LA LIBERTAD AVANZA` (2025) -> bloque `LLA`.
-  - `UNION POR LA PATRIA` (2023) -> bloque `PERONISMO_K`.
-  - `ALIANZA FUERZA PATRIA` (2025) -> bloque `PERONISMO_K`.
-- El resto de fuerzas deberia conservarse como agrupacion propia y, en paralelo, clasificarse en bloques amplios si el analisis politico lo requiere.
-
-## Circuitos no apareados
-
-Muestra de claves con formato `(distrito_id, seccion_id, circuito_id)`:
-
-- Solo 2023: [('2', '47', '342'), ('2', '5', '56'), ('2', '52', '383'), ('2', '52', '388'), ('2', '60', '448'), ('2', '84', '0719A')]
-- Solo 2025: [('2', '105', '882'), ('2', '109', '927'), ('2', '111', '0933M'), ('2', '17', '160'), ('2', '17', '162'), ('2', '3', '0022C'), ('2', '39', '309'), ('2', '48', '346'), ('2', '5', '54'), ('2', '52', '0388A'), ('2', '52', '0388B'), ('2', '52', '0388C'), ('2', '63', '493'), ('2', '81', '678')]
-
-## Archivos auxiliares
-
-- `Libro3_normalizado_mapas.xls`: firma `D0 CF 11 E0 A1 B1 1A E1`. Es un Excel binario historico `.xls`; requiere conversion o lector `xlrd` para auditar hojas.
-- Diccionario `.xlsx`: firma `50 4B 03 04 14 00 06 00`. Es un `.xlsx` valido y puede inspeccionarse luego si necesitamos documentar campos de la capa departamental.
-
-## Recomendacion para el proximo paso
-
-1. Construir un ETL que produzca agregados por circuito para 2023 y 2025, mas una tabla de comparacion.
-2. Preparar una capa GeoJSON liviana de circuitos con clave normalizada `partido_norm + circuito_norm`.
-3. Desarrollar el MVP estatico con Leaflet/Argenmap usando datos preprocesados.
-4. Revisar manualmente los pocos circuitos no apareados antes de publicar indicadores finales.
-
-## Indicadores calculables con los insumos actuales
-
-- Electores por mesa/circuito/partido/provincia.
-- Votantes como suma de votos por mesa/circuito/partido/provincia.
-- Participacion y ausentismo.
-- Voto positivo por fuerza.
-- Blanco, nulo y otros tipos disponibles en `votos_tipo`.
-- Ranking de variaciones 2023-2025 por circuito si se usa la tabla electoral.
-- Mapa de variaciones por circuito con la nueva cartografia, sujeto a resolver no apareados.
+- A nivel partido, todas las elecciones quedan con 135 partidos y sin partidos con datos fuera de la geometria.
+- Chascomus y Lezama quedan separados por CODIGO: `06218` y `06466`.
+- General San Martin queda agregado por CODIGO `06371`, incluyendo circuitos historicos 2023 aunque no existan como poligonos individuales en la capa 2025.
+- En vista circuito, 2023 conserva una salvedad: los circuitos historicos `383` y `388` no tienen geometria propia en PBA3.
