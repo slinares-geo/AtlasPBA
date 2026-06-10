@@ -21,7 +21,8 @@ Aplicacion web estatica para explorar resultados electorales de la Provincia de 
 ## Fuentes de datos
 
 - DINE / resultados electorales: <https://www.argentina.gob.ar/dine/resultados-electorales>
-- Cartografia de partidos de Provincia de Buenos Aires desde datos abiertos: <https://catalogo.datos.gba.gob.ar/sv/dataset/partidos>
+- Cartografia de partidos de Provincia de Buenos Aires desde datos abiertos: <(https://portalgeoestadistico.indec.gob.ar/)>
+- Cartografía digital de Circuitos Electorales de Buenos Aires | Cámara Nacional Electoral: <https://mapa2.electoral.gov.ar/descargas/>
 
 ## Estructura del proyecto
 
@@ -83,4 +84,4 @@ No se identifico una licencia en esta carpeta. Agregar la licencia correspondien
 
 ## Creditos
 
-Proyecto desarrollado para el analisis territorial de resultados electorales en la Provincia de Buenos Aires.
+Proyecto desarrollado para el analisis territorial de resultados electorales en la Provincia de Buenos Aires por Santiago Linares y Juan Suasnábar - Contacto: slinaresgeo@gmail.com
